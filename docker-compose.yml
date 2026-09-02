@@ -1,0 +1,11 @@
+services:
+  chroma:
+    image: chromadb/chroma:1.5.9
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/chroma:/data
+    # No Docker-level healthcheck: the chromadb/chroma image ships neither curl,
+    # wget, nor python, so there's no lightweight in-container way to probe it.
+    # Check readiness from the host instead: curl http://localhost:8000/api/v2/heartbeat
+    restart: unless-stopped

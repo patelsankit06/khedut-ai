@@ -32,6 +32,13 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.local.example
+
+# local data (Chroma persistence volume, document registry, extracted text cache)
+/data/chroma/*
+!/data/chroma/.gitkeep
+/data/registry.json
+/data/documents/
 
 # vercel
 .vercel
