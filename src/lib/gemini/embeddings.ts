@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { Embeddings } from "@langchain/core/embeddings";
 import { AppError } from "@/lib/errors";
-import { isAuthOrBadRequestError, isRateLimitError, withRetry } from "./retry";
+import { isAuthOrBadRequestError, isRateLimitError, isServiceUnavailableError, withRetry } from "./retry";
 
 // Free-tier friendly: small batches, sequential (not parallel), with a short
 // pause between batches, all wrapped in retry/backoff.
@@ -89,6 +89,13 @@ export class GeminiEmbeddings extends Embeddings {
           "RATE_LIMITED",
           "Gemini free-tier rate limit hit while embedding. Please wait a moment and retry.",
           429
+        );
+      }
+      if (isServiceUnavailableError(error)) {
+        throw new AppError(
+          "GEMINI_API_ERROR",
+          "Gemini's model is temporarily overloaded (Google's free-tier flash model sees demand spikes). This was already retried automatically - please wait a few seconds and try again.",
+          503
         );
       }
       if (isAuthOrBadRequestError(error)) {

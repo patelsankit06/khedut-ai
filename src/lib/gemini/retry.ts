@@ -16,6 +16,12 @@ export function isRateLimitError(error: unknown): boolean {
   return getStatusCode(error) === 429;
 }
 
+// Google's own wording for this: "model is currently experiencing high demand
+// ... usually temporary" - common on the shared free tier.
+export function isServiceUnavailableError(error: unknown): boolean {
+  return getStatusCode(error) === 503;
+}
+
 export function isAuthOrBadRequestError(error: unknown): boolean {
   const status = getStatusCode(error);
   return status === 400 || status === 401 || status === 403;

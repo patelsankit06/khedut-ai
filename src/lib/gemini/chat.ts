@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { AppError } from "@/lib/errors";
-import { isAuthOrBadRequestError, isRateLimitError, withRetry } from "./retry";
+import { isAuthOrBadRequestError, isRateLimitError, isServiceUnavailableError, withRetry } from "./retry";
 
 interface StreamAnswerParams {
   apiKey: string;
@@ -46,6 +46,13 @@ function toAppError(error: unknown): AppError {
       "RATE_LIMITED",
       "Gemini free-tier rate limit hit. Please wait a moment and try again.",
       429
+    );
+  }
+  if (isServiceUnavailableError(error)) {
+    return new AppError(
+      "GEMINI_API_ERROR",
+      "Gemini's model is temporarily overloaded (Google's free-tier flash model sees demand spikes). This was already retried automatically - please wait a few seconds and try again.",
+      503
     );
   }
   if (isAuthOrBadRequestError(error)) {
