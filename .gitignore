@@ -39,6 +39,7 @@ yarn-error.log*
 !/data/chroma/.gitkeep
 /data/registry.json
 /data/documents/
+/data/kb-status.json
 
 # vercel
 .vercel

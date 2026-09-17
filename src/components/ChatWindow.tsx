@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { Citation } from "@/lib/retrieval";
+import type { CropId } from "@/lib/crops";
 import { MessageBubble, type ChatMessage } from "./MessageBubble";
 
 type StreamEvent =
@@ -10,7 +11,7 @@ type StreamEvent =
   | { type: "done" }
   | { type: "error"; message: string };
 
-const STORAGE_KEY = "rag-chatbot:messages";
+const STORAGE_KEY = "khedu-ai:messages";
 
 function loadStoredMessages(): ChatMessage[] {
   if (typeof window === "undefined") return [];
@@ -27,7 +28,7 @@ function loadStoredMessages(): ChatMessage[] {
   }
 }
 
-export function ChatWindow() {
+export function ChatWindow({ crop }: { crop: CropId | null }) {
   const [messages, setMessages] = useState<ChatMessage[]>(loadStoredMessages);
   const [question, setQuestion] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -72,7 +73,7 @@ export function ChatWindow() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: trimmed }),
+        body: JSON.stringify({ question: trimmed, crop: crop ?? undefined }),
       });
 
       if (!response.ok || !response.body) {
@@ -128,8 +129,10 @@ export function ChatWindow() {
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
         {messages.length === 0 && (
           <p className="text-sm text-zinc-500">
-            Upload a document, then ask a question about it. Answers are grounded only in what you&apos;ve
-            uploaded, with citations back to the source.
+            {crop
+              ? `Ask about ${crop} crop care - stages, soil, irrigation, fertilizers, diseases, or pests.`
+              : "Pick a crop in the sidebar for focused answers, or ask a general farming question."}{" "}
+            Answers are grounded in the farming knowledge base, with sources cited.
           </p>
         )}
         {messages.map((message, index) => (
@@ -141,7 +144,7 @@ export function ChatWindow() {
         <input
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Ask a question about your documents..."
+          placeholder={crop ? `Ask about ${crop}...` : "Ask a farming question..."}
           className="flex-1 rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-900 outline-none focus:border-indigo-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
           disabled={isSending}
         />

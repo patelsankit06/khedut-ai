@@ -3,14 +3,26 @@
 import { useEffect, useState } from "react";
 import { UploadPanel } from "@/components/UploadPanel";
 import { ChatWindow } from "@/components/ChatWindow";
+import { CropSelector } from "@/components/CropSelector";
+import { KnowledgeBasePanel } from "@/components/KnowledgeBasePanel";
+import { isCropId, type CropId } from "@/lib/crops";
 
 interface HealthState {
   chroma: "reachable" | "unreachable";
   gemini: "configured" | "missing_api_key";
 }
 
+const CROP_STORAGE_KEY = "khedu-ai:crop";
+
+function loadStoredCrop(): CropId | null {
+  if (typeof window === "undefined") return null;
+  const stored = window.localStorage.getItem(CROP_STORAGE_KEY);
+  return stored && isCropId(stored) ? stored : null;
+}
+
 export default function Home() {
   const [health, setHealth] = useState<HealthState | null>(null);
+  const [crop, setCrop] = useState<CropId | null>(loadStoredCrop);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,23 +45,40 @@ export default function Home() {
     };
   }, []);
 
+  function handleSelectCrop(next: CropId | null) {
+    setCrop(next);
+    try {
+      if (next) {
+        window.localStorage.setItem(CROP_STORAGE_KEY, next);
+      } else {
+        window.localStorage.removeItem(CROP_STORAGE_KEY);
+      }
+    } catch {
+      // Ignore storage failures (e.g. private browsing).
+    }
+  }
+
   return (
     <div className="flex h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
       <header className="flex items-center justify-between border-b border-zinc-200 px-6 py-3 dark:border-zinc-800">
-        <h1 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">RAG Chatbot</h1>
+        <h1 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">🌱 Khedu AI</h1>
         {health && (
           <div className="flex gap-2 text-xs">
-            <StatusPill label="Chroma" ok={health.chroma === "reachable"} />
-            <StatusPill label="Gemini" ok={health.gemini === "configured"} />
+            <StatusPill label="Knowledge Base" ok={health.chroma === "reachable"} />
+            <StatusPill label="AI Model" ok={health.gemini === "configured"} />
           </div>
         )}
       </header>
       <div className="grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[280px_1fr]">
-        <aside className="hidden overflow-hidden border-r border-zinc-200 md:block dark:border-zinc-800">
-          <UploadPanel />
+        <aside className="hidden flex-col overflow-hidden border-r border-zinc-200 md:flex dark:border-zinc-800">
+          <KnowledgeBasePanel />
+          <CropSelector selected={crop} onSelect={handleSelectCrop} />
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <UploadPanel />
+          </div>
         </aside>
         <section className="flex flex-col overflow-hidden">
-          <ChatWindow />
+          <ChatWindow crop={crop} />
         </section>
       </div>
     </div>

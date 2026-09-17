@@ -10,6 +10,7 @@ export function CitationList({ citations }: { citations: Citation[] }) {
           className="rounded-full bg-black/5 px-2 py-0.5 text-xs font-medium text-zinc-600 dark:bg-white/10 dark:text-zinc-300"
         >
           [{citation.n}] {citation.source}
+          {citation.category ? ` · ${citation.category}` : ""}
           {citation.page !== undefined ? ` p.${citation.page}` : ""}
         </span>
       ))}

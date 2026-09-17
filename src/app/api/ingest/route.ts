@@ -37,6 +37,12 @@ export async function POST(request: NextRequest) {
     await saveDocumentContent(uploadId, docs.map((doc) => doc.pageContent).join("\n\n"));
 
     const chunks = await chunkDocuments(docs, { uploadId, filename: file.name });
+    // Uploads aren't tagged to a specific crop, but every chunk needs a
+    // `crop` field so crop-filtered queries (which also match "general") can
+    // still find them.
+    chunks.forEach((chunk) => {
+      chunk.metadata.crop = "general";
+    });
 
     try {
       await getIngestStore().addDocuments(chunks, {

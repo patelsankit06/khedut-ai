@@ -26,7 +26,7 @@ export function getConfig(): AppConfig {
     geminiChatModel: process.env.GEMINI_CHAT_MODEL || "gemini-flash-latest",
     geminiEmbeddingModel: process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001",
     chromaUrl: process.env.CHROMA_URL || "http://localhost:8000",
-    chromaCollection: process.env.CHROMA_COLLECTION || "rag_chunks",
+    chromaCollection: process.env.CHROMA_COLLECTION || "khedu_chunks",
     maxUploadBytes: Number(process.env.MAX_UPLOAD_MB || "20") * 1024 * 1024,
   };
   return cached;

@@ -7,7 +7,10 @@ import { streamAnswer } from "@/lib/gemini/chat";
 
 export const runtime = "nodejs";
 
-const requestSchema = z.object({ question: z.string().min(1).max(2000) });
+const requestSchema = z.object({
+  question: z.string().min(1).max(2000),
+  crop: z.string().min(1).max(50).optional(),
+});
 
 function encodeLine(obj: unknown): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(obj) + "\n");
@@ -38,7 +41,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return errorResponse(new AppError("INVALID_REQUEST", "Body must be { question: string } (1-2000 chars).", 400));
   }
-  const { question } = parsed.data;
+  const { question, crop } = parsed.data;
 
   const config = tryGetConfig();
   if (!config) {
@@ -48,7 +51,7 @@ export async function POST(request: NextRequest) {
   let citations;
   let contextBlock;
   try {
-    ({ citations, contextBlock } = await retrieve(question));
+    ({ citations, contextBlock } = await retrieve(question, crop));
   } catch (error) {
     return errorResponse(error);
   }
@@ -60,7 +63,7 @@ export async function POST(request: NextRequest) {
         controller.enqueue(
           encodeLine({
             type: "token",
-            data: "No documents have been uploaded yet. Upload a PDF, DOCX, TXT, or Markdown file first, then ask again.",
+            data: "No matching information found. Try loading the knowledge base from the sidebar, pick a different crop, or ask a more general farming question.",
           })
         );
         controller.enqueue(encodeLine({ type: "done" }));
@@ -71,7 +74,7 @@ export async function POST(request: NextRequest) {
       controller.enqueue(encodeLine({ type: "citations", data: citations }));
 
       try {
-        const prompt = buildPrompt(question, contextBlock);
+        const prompt = buildPrompt(question, contextBlock, crop);
         for await (const textChunk of streamAnswer({
           apiKey: config.geminiApiKey,
           model: config.geminiChatModel,

@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RAG Chatbot",
-  description: "Upload documents and ask grounded, cited questions about them.",
+  title: "Khedu AI - Smart Farming Assistant",
+  description: "Ask crop-specific farming questions and get grounded, cited answers from an agriculture knowledge base.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

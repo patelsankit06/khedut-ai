@@ -82,8 +82,8 @@ export function UploadPanel() {
   return (
     <div className="flex h-full flex-col gap-4 p-4">
       <div>
-        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Documents</h2>
-        <p className="mt-1 text-xs text-zinc-500">PDF, DOCX, TXT, or Markdown</p>
+        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Additional Documents</h2>
+        <p className="mt-1 text-xs text-zinc-500">Optional extra sources - PDF, DOCX, TXT, or Markdown</p>
       </div>
 
       <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 transition hover:border-indigo-400 hover:text-indigo-600 dark:border-zinc-700">
