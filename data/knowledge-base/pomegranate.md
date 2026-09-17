@@ -1,6 +1,6 @@
 ---
 crop: pomegranate
-source: "Khedu AI Pomegranate Cultivation Guide"
+source: "Khedut AI Pomegranate Cultivation Guide"
 ---
 
 ## Crop Stages

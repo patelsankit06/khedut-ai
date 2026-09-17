@@ -50,7 +50,8 @@ export function KnowledgeBasePanel() {
       <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Farming Knowledge Base</h2>
       {status ? (
         <p className="mt-1 text-xs text-zinc-500">
-          {status.totalChunks} chunks loaded across {Object.keys(status.perCrop).length} crops.
+          {status.totalChunks} chunks loaded across{" "}
+          {Object.keys(status.perCrop).filter((crop) => crop !== "general").length} crops.
         </p>
       ) : (
         <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Not loaded yet.</p>

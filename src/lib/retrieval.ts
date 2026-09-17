@@ -21,15 +21,27 @@ export interface RetrievalResult {
 const TOP_K = 4;
 
 // Chroma's distance score here is cosine distance (0 = identical, 2 =
-// opposite) - lower is more similar. Empirically, on-topic matches for this
-// knowledge base score well under 0.65, while off-topic questions (small
-// talk, unrelated trivia) score 0.8+ even for the "closest" chunk, since
-// nearest-neighbor search always returns *something*. Chunks past this
-// threshold are dropped so unrelated questions don't surface misleading
-// citations - see the "About Khedu AI" doc in data/knowledge-base for how
-// meta-questions ("what can you do?") are answered from the KB itself
-// instead of falling through this cutoff.
-const MAX_RELEVANT_DISTANCE = 0.8;
+// opposite) - lower is more similar. Calibrated empirically for
+// nomic-embed-text (Ollama): on-topic matches for this knowledge base score
+// well under 0.75, while off-topic trivia scores 1.05+ even for the
+// "closest" chunk, since nearest-neighbor search always returns *something*.
+// Chunks past this threshold are dropped so unrelated questions don't
+// surface misleading citations. Re-calibrate if the embedding model changes
+// - a smaller local model separates topics less sharply than a hosted one.
+const MAX_RELEVANT_DISTANCE = 1.0;
+
+// nomic-embed-text doesn't separate "meta questions about the assistant"
+// from generic off-topic trivia as sharply as a larger hosted embedding
+// model would - both score similarly far from farming content (observed
+// ~1.05-1.08 for genuine "what do you do?" matches against the About doc
+// itself, overlapping with off-topic trivia's ~1.08-1.2), so the distance
+// threshold alone can't reliably tell them apart. Meta questions are instead
+// routed straight at the "About Khedut AI" doc (crop: "general"), bypassing
+// both the crop filter and the relevance threshold. Keep this pattern broad
+// - it's the only thing standing between a real phrasing and a confusing
+// "no matching information" reply, so favor more variants over precision.
+const META_QUESTION_PATTERN =
+  /\b(what (do|can|)\s*you do|who are you|what are you|what is khedut|about khedut|your capabilit|what can i ask|what.*questions.*(can i )?ask|how (do|can) i use (this|you|khedut)|introduce yourself|what.*(this (app|bot|chatbot|assistant)))\b/i;
 
 // Chunks are always tagged with a `crop` (a specific crop, or "general" for
 // documents uploaded without a crop). Filtering by a selected crop still
@@ -41,14 +53,17 @@ function buildCropFilter(crop?: string): CropFilter | undefined {
 }
 
 export async function retrieve(question: string, crop?: string): Promise<RetrievalResult> {
+  const isMetaQuestion = META_QUESTION_PATTERN.test(question);
+  const filter: CropFilter | undefined = isMetaQuestion ? { crop: "general" } : buildCropFilter(crop);
+
   let rawResults: [Document, number][];
   try {
-    rawResults = await getQueryStore().similaritySearchWithScore(question, TOP_K, buildCropFilter(crop));
+    rawResults = await getQueryStore().similaritySearchWithScore(question, TOP_K, filter);
   } catch (error) {
     throw toVectorStoreError(error);
   }
 
-  const results = rawResults.filter(([, score]) => score <= MAX_RELEVANT_DISTANCE);
+  const results = isMetaQuestion ? rawResults : rawResults.filter(([, score]) => score <= MAX_RELEVANT_DISTANCE);
 
   const citations: Citation[] = results.map(([doc, score], index) => ({
     n: index + 1,
@@ -72,16 +87,19 @@ export async function retrieve(question: string, crop?: string): Promise<Retriev
   return { citations, contextBlock };
 }
 
-export const SYSTEM_INSTRUCTION = `You are Khedu AI, a friendly agricultural assistant that helps farmers with crop stages, soil, irrigation, fertilizers, nutrient deficiencies, diseases, and pest management.
+export const SYSTEM_INSTRUCTION = `You are Khedut AI, a helpful farming assistant. You have access to a curated agriculture knowledge base covering pomegranate, tomato, wheat, cotton, and potato (crop stages, soil, irrigation, fertilizers, diseases, pests, harvesting).
 Rules:
-- Only use information found in the numbered context excerpts the user provides. Do not use outside general knowledge.
-- Cite the sources you used inline with their bracketed number, e.g. [1] or [1][2].
-- If the context does not contain enough information to answer, say "I don't have enough information in the knowledge base to answer that confidently - please consult your local agricultural extension office." Do not guess.
-- Never name a specific pesticide, fungicide, or fertilizer brand/dosage unless the context excerpt explicitly and specifically states it for this exact situation. Otherwise, describe the general category or approach and recommend the farmer consult a local agricultural expert before applying any chemical.
-- When discussing symptoms that could indicate a disease or pest, present them as "possible causes" rather than a definitive diagnosis, and suggest practical next steps (inspection, isolation of affected plants, expert consultation).
-- Keep answers practical and use bullet points for symptoms, causes, or steps when it improves clarity.`;
+- Some messages below include numbered context excerpts from the knowledge base. When they're present, ground your answer in them and cite the sources you used inline with their bracketed number, e.g. [1] or [1][2].
+- When a message has no context excerpts (the knowledge base didn't have a specific match, it's a general or follow-up question, or small talk), just answer normally and helpfully using your own knowledge and the conversation so far - don't refuse and don't claim you have no information. Never invent a bracketed citation when no context was given.
+- Use the conversation history to understand follow-ups like "yes", "tell me more", or "what about tomato instead?".
+- Never name a specific pesticide, fungicide, or fertilizer brand/dosage for a farming question unless a context excerpt explicitly and specifically states it. Otherwise, describe the general approach and recommend consulting a local agricultural expert before applying any chemical.
+- When discussing symptoms that could indicate a plant disease or pest, present them as "possible causes" rather than a definitive diagnosis, and suggest practical next steps (inspection, isolation of affected plants, expert consultation).
+- Keep answers concise and practical, using bullet points for symptoms, causes, or steps when it improves clarity.`;
 
 export function buildPrompt(question: string, contextBlock: string, crop?: string): string {
   const cropLine = crop ? `The farmer's selected crop is: ${crop}.\n\n` : "";
+  if (!contextBlock) {
+    return `${cropLine}Question: ${question}\n\n(No matching knowledge base excerpts for this one - answer from your own knowledge or the conversation history.)`;
+  }
   return `${cropLine}Context:\n${contextBlock}\n\nQuestion: ${question}`;
 }

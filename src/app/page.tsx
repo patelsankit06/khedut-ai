@@ -9,10 +9,10 @@ import { isCropId, type CropId } from "@/lib/crops";
 
 interface HealthState {
   chroma: "reachable" | "unreachable";
-  gemini: "configured" | "missing_api_key";
+  ollama: "reachable" | "unreachable";
 }
 
-const CROP_STORAGE_KEY = "khedu-ai:crop";
+const CROP_STORAGE_KEY = "khedut-ai:crop";
 
 function loadStoredCrop(): CropId | null {
   if (typeof window === "undefined") return null;
@@ -22,7 +22,18 @@ function loadStoredCrop(): CropId | null {
 
 export default function Home() {
   const [health, setHealth] = useState<HealthState | null>(null);
-  const [crop, setCrop] = useState<CropId | null>(loadStoredCrop);
+  // Starts null (matching the server, which has no localStorage) and loads
+  // any stored crop in an effect below to avoid a hydration mismatch.
+  const [crop, setCrop] = useState<CropId | null>(null);
+
+  useEffect(() => {
+    // Deliberately loading external (browser-only) state after mount, not
+    // synchronizing derived state - localStorage isn't available during SSR,
+    // so reading it any earlier would cause a hydration mismatch.
+    const stored = loadStoredCrop();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (stored) setCrop(stored);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,7 +44,7 @@ export default function Home() {
         const data = (await response.json()) as HealthState;
         if (!cancelled) setHealth(data);
       } catch {
-        if (!cancelled) setHealth({ chroma: "unreachable", gemini: "missing_api_key" });
+        if (!cancelled) setHealth({ chroma: "unreachable", ollama: "unreachable" });
       }
     }
 
@@ -61,11 +72,11 @@ export default function Home() {
   return (
     <div className="flex h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
       <header className="flex items-center justify-between border-b border-zinc-200 px-6 py-3 dark:border-zinc-800">
-        <h1 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">🌱 Khedu AI</h1>
+        <h1 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">🌱 Khedut AI</h1>
         {health && (
           <div className="flex gap-2 text-xs">
             <StatusPill label="Knowledge Base" ok={health.chroma === "reachable"} />
-            <StatusPill label="AI Model" ok={health.gemini === "configured"} />
+            <StatusPill label="AI Model" ok={health.ollama === "reachable"} />
           </div>
         )}
       </header>

@@ -1,27 +1,29 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { getConfig, type AppConfig } from "@/lib/config";
+import { getConfig } from "@/lib/config";
 import { AppError, toErrorPayload } from "@/lib/errors";
 import { retrieve, buildPrompt, SYSTEM_INSTRUCTION } from "@/lib/retrieval";
-import { streamAnswer } from "@/lib/gemini/chat";
+import { streamAnswer } from "@/lib/ollama/chat";
+import type { ChatTurn } from "@/lib/chatTurn";
 
 export const runtime = "nodejs";
+
+const historyTurnSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string().min(1).max(4000),
+});
 
 const requestSchema = z.object({
   question: z.string().min(1).max(2000),
   crop: z.string().min(1).max(50).optional(),
+  // Recent prior turns, oldest first - lets the model resolve follow-ups
+  // ("yes", "tell me more") instead of every question being answered in
+  // isolation. Capped client-side; capped again here defensively.
+  history: z.array(historyTurnSchema).max(20).optional(),
 });
 
 function encodeLine(obj: unknown): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(obj) + "\n");
-}
-
-function tryGetConfig(): AppConfig | null {
-  try {
-    return getConfig();
-  } catch {
-    return null;
-  }
 }
 
 function errorResponse(error: unknown): Response {
@@ -41,12 +43,8 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return errorResponse(new AppError("INVALID_REQUEST", "Body must be { question: string } (1-2000 chars).", 400));
   }
-  const { question, crop } = parsed.data;
-
-  const config = tryGetConfig();
-  if (!config) {
-    return errorResponse(new AppError("GEMINI_API_ERROR", "GEMINI_API_KEY is not configured on the server.", 502));
-  }
+  const { question, crop, history } = parsed.data;
+  const config = getConfig();
 
   let citations;
   let contextBlock;
@@ -58,28 +56,17 @@ export async function POST(request: NextRequest) {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      if (citations.length === 0) {
-        controller.enqueue(encodeLine({ type: "citations", data: [] }));
-        controller.enqueue(
-          encodeLine({
-            type: "token",
-            data: "No matching information found. Try loading the knowledge base from the sidebar, pick a different crop, or ask a more general farming question.",
-          })
-        );
-        controller.enqueue(encodeLine({ type: "done" }));
-        controller.close();
-        return;
-      }
-
       controller.enqueue(encodeLine({ type: "citations", data: citations }));
 
       try {
-        const prompt = buildPrompt(question, contextBlock, crop);
+        const currentTurn: ChatTurn = { role: "user", content: buildPrompt(question, contextBlock, crop) };
+        const messages: ChatTurn[] = [...(history ?? []), currentTurn];
+
         for await (const textChunk of streamAnswer({
-          apiKey: config.geminiApiKey,
-          model: config.geminiChatModel,
+          baseUrl: config.ollamaUrl,
+          model: config.ollamaChatModel,
           systemInstruction: SYSTEM_INSTRUCTION,
-          prompt,
+          messages,
         })) {
           controller.enqueue(encodeLine({ type: "token", data: textChunk }));
         }

@@ -1,7 +1,7 @@
 export interface AppConfig {
-  geminiApiKey: string;
-  geminiChatModel: string;
-  geminiEmbeddingModel: string;
+  ollamaUrl: string;
+  ollamaChatModel: string;
+  ollamaEmbeddingModel: string;
   chromaUrl: string;
   chromaCollection: string;
   maxUploadBytes: number;
@@ -9,24 +9,21 @@ export interface AppConfig {
 
 let cached: AppConfig | null = null;
 
-// Validated lazily (not at module load) so `next build` - which imports route
-// modules to inspect their exports - doesn't fail when env vars aren't set yet.
+// No API key required - Ollama runs locally, so there's nothing to validate
+// up front. Still lazy (not at module load) for consistency with how routes
+// are inspected during `next build`.
 export function getConfig(): AppConfig {
   if (cached) return cached;
 
-  const geminiApiKey = process.env.GEMINI_API_KEY;
-  if (!geminiApiKey) {
-    throw new Error(
-      "Missing GEMINI_API_KEY. Copy .env.local.example to .env.local and set it (get a free key at https://aistudio.google.com/apikey)."
-    );
-  }
-
   cached = {
-    geminiApiKey,
-    geminiChatModel: process.env.GEMINI_CHAT_MODEL || "gemini-flash-latest",
-    geminiEmbeddingModel: process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001",
+    ollamaUrl: process.env.OLLAMA_URL || "http://localhost:11434",
+    ollamaChatModel: process.env.OLLAMA_CHAT_MODEL || "llama3.2",
+    ollamaEmbeddingModel: process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text",
     chromaUrl: process.env.CHROMA_URL || "http://localhost:8000",
-    chromaCollection: process.env.CHROMA_COLLECTION || "khedu_chunks",
+    // Distinct from the old Gemini-backed collection name: Ollama's
+    // embedding model has a different vector dimensionality, so it needs
+    // its own Chroma collection rather than reusing/mixing with old vectors.
+    chromaCollection: process.env.CHROMA_COLLECTION || "khedut_chunks_ollama",
     maxUploadBytes: Number(process.env.MAX_UPLOAD_MB || "20") * 1024 * 1024,
   };
   return cached;

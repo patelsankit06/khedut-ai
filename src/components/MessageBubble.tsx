@@ -1,5 +1,4 @@
 import type { Citation } from "@/lib/retrieval";
-import { CitationList } from "./CitationList";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -26,7 +25,6 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
           <span className="ml-1 inline-block h-3 w-1.5 animate-pulse bg-current align-middle" />
         )}
         {message.error && <p className="mt-2 text-xs text-red-500">{message.error}</p>}
-        {message.citations && message.citations.length > 0 && <CitationList citations={message.citations} />}
       </div>
     </div>
   );

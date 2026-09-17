@@ -1,6 +1,6 @@
 ---
 crop: cotton
-source: "Khedu AI Cotton Cultivation Guide"
+source: "Khedut AI Cotton Cultivation Guide"
 ---
 
 ## Crop Stages

@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Khedu AI - Smart Farming Assistant",
+  title: "Khedut AI - Smart Farming Assistant",
   description: "Ask crop-specific farming questions and get grounded, cited answers from an agriculture knowledge base.",
 };
 

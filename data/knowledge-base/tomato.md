@@ -1,6 +1,6 @@
 ---
 crop: tomato
-source: "Khedu AI Tomato Cultivation Guide"
+source: "Khedut AI Tomato Cultivation Guide"
 ---
 
 ## Crop Stages

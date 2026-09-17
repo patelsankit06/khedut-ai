@@ -2,11 +2,10 @@ import { ChromaClient } from "chromadb";
 import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { getConfig } from "@/lib/config";
 import { AppError } from "@/lib/errors";
-import { GeminiEmbeddings } from "@/lib/gemini/embeddings";
+import { OllamaEmbeddings } from "@/lib/ollama/embeddings";
 
 let chromaClient: ChromaClient | null = null;
-let ingestStore: Chroma | null = null;
-let queryStore: Chroma | null = null;
+let vectorStore: Chroma | null = null;
 
 function getChromaClient(): ChromaClient {
   if (!chromaClient) {
@@ -24,36 +23,35 @@ export async function isChromaReachable(): Promise<boolean> {
   }
 }
 
-/** Vector store used at ingestion time - embeds with taskType RETRIEVAL_DOCUMENT. */
-export function getIngestStore(): Chroma {
-  if (!ingestStore) {
-    const config = getConfig();
-    ingestStore = new Chroma(
-      new GeminiEmbeddings({
-        apiKey: config.geminiApiKey,
-        model: config.geminiEmbeddingModel,
-        taskType: "RETRIEVAL_DOCUMENT",
-      }),
-      { url: config.chromaUrl, collectionName: config.chromaCollection }
-    );
+export async function isOllamaReachable(): Promise<boolean> {
+  try {
+    const response = await fetch(`${getConfig().ollamaUrl}/api/tags`);
+    return response.ok;
+  } catch {
+    return false;
   }
-  return ingestStore;
 }
 
-/** Vector store used at query time - embeds with taskType RETRIEVAL_QUERY, same collection. */
-export function getQueryStore(): Chroma {
-  if (!queryStore) {
+// Ollama's embedding models are symmetric (no separate query/document
+// taskType like Gemini's), so a single store/embeddings instance covers
+// both ingestion and querying.
+function getVectorStore(): Chroma {
+  if (!vectorStore) {
     const config = getConfig();
-    queryStore = new Chroma(
-      new GeminiEmbeddings({
-        apiKey: config.geminiApiKey,
-        model: config.geminiEmbeddingModel,
-        taskType: "RETRIEVAL_QUERY",
-      }),
+    vectorStore = new Chroma(
+      new OllamaEmbeddings({ baseUrl: config.ollamaUrl, model: config.ollamaEmbeddingModel }),
       { url: config.chromaUrl, collectionName: config.chromaCollection }
     );
   }
-  return queryStore;
+  return vectorStore;
+}
+
+export function getIngestStore(): Chroma {
+  return getVectorStore();
+}
+
+export function getQueryStore(): Chroma {
+  return getVectorStore();
 }
 
 export function toVectorStoreError(error: unknown): AppError {

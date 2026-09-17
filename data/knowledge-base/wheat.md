@@ -1,6 +1,6 @@
 ---
 crop: wheat
-source: "Khedu AI Wheat Cultivation Guide"
+source: "Khedut AI Wheat Cultivation Guide"
 ---
 
 ## Crop Stages

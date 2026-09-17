@@ -1,6 +1,6 @@
 ---
 crop: potato
-source: "Khedu AI Potato Cultivation Guide"
+source: "Khedut AI Potato Cultivation Guide"
 ---
 
 ## Crop Stages
