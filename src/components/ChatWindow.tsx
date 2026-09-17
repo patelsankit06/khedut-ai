@@ -10,8 +10,25 @@ type StreamEvent =
   | { type: "done" }
   | { type: "error"; message: string };
 
+const STORAGE_KEY = "rag-chatbot:messages";
+
+function loadStoredMessages(): ChatMessage[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ChatMessage[];
+    // Drop any message left mid-stream by a previous session.
+    return parsed.map((message) =>
+      message.isStreaming ? { ...message, isStreaming: false } : message
+    );
+  } catch {
+    return [];
+  }
+}
+
 export function ChatWindow() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadStoredMessages);
   const [question, setQuestion] = useState("");
   const [isSending, setIsSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -20,6 +37,14 @@ export function ChatWindow() {
   // on every streamed token, and on completion/error.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+    } catch {
+      // Ignore storage failures (e.g. quota exceeded or private browsing).
+    }
   }, [messages]);
 
   async function handleSubmit(event: FormEvent) {
