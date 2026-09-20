@@ -1,5 +1,5 @@
 import { Document } from "@langchain/core/documents";
-import { PDFParse } from "pdf-parse";
+import pdfParse from "pdf-parse";
 import { DocxLoader } from "@langchain/community/document_loaders/fs/docx";
 import { TextLoader } from "@langchain/classic/document_loaders/fs/text";
 import { AppError } from "@/lib/errors";
@@ -19,21 +19,28 @@ export async function loadDocument(file: File, originalFilename: string): Promis
   let docs: Document[];
   switch (extension) {
     case "pdf": {
-      // Calling pdf-parse's v2 API directly (statically imported above)
-      // rather than going through @langchain/community's PDFLoader, which
-      // resolves pdf-parse via a dynamic import() with a version-fallback
-      // dance for a legacy v1 build path that doesn't exist in the v2 we
-      // have installed. That dynamic resolution works locally (full
-      // node_modules on disk) but silently fails on Vercel, where only
-      // statically-imported files are reliably included in the deployed
-      // function - see the "PDF uploads failing on Vercel" fix history.
+      // pdf-parse v1, deliberately: v2 pulls in pdfjs-dist + @napi-rs/canvas
+      // (native bindings), which broke in ways that were hard to diagnose on
+      // Vercel (its runtime-log API was scope-restricted for this account,
+      // so we couldn't see the real error - a temporary diagnostic build
+      // showed the swallowed "Failed to load pdf-parse" message, then after
+      // switching to a static import, an outright uncaught crash with no
+      // response body, consistent with a module failing to link at all on
+      // Vercel's Lambda). v1 has effectively no dependencies (a single
+      // bundled pdf.js, no native code) and is the long-standing, widely
+      // deployed choice for exactly this environment - see the "PDF uploads
+      // failing on Vercel" fix history for the full story.
       const buffer = Buffer.from(await file.arrayBuffer());
-      const parser = new PDFParse({ data: buffer });
-      const result = await parser.getText();
-      await parser.destroy();
-      docs = result.pages.map(
-        (page) => new Document({ pageContent: page.text, metadata: { loc: { pageNumber: page.num } } })
-      );
+      const pages: { text: string; num: number }[] = [];
+      await pdfParse(buffer, {
+        pagerender: async (pageData) => {
+          const textContent = await pageData.getTextContent();
+          const text = textContent.items.map((item: { str: string }) => item.str).join(" ");
+          pages.push({ text, num: pageData.pageNumber });
+          return text;
+        },
+      });
+      docs = pages.map((page) => new Document({ pageContent: page.text, metadata: { loc: { pageNumber: page.num } } }));
       break;
     }
     case "docx":
