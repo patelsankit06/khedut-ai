@@ -128,12 +128,22 @@ export default function Home() {
     <div className="flex h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
       <header className="flex items-center justify-between border-b border-zinc-200 px-6 py-3 dark:border-zinc-800">
         <h1 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">🌱 Khedut AI</h1>
-        {health && (
-          <div className="flex gap-2 text-xs">
-            <StatusPill label="Knowledge Base" ok={health.chroma === "reachable"} />
-            <StatusPill label={provider === "gemini" ? "Gemini" : "Ollama"} ok={Boolean(modelOk)} />
-          </div>
-        )}
+        <div className="flex items-center gap-3 text-xs">
+          <a
+            href="https://patelsankit2.vercel.app/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-emerald-700 hover:underline dark:text-emerald-400"
+          >
+            Patelsankit Portfolio
+          </a>
+          {health && (
+            <div className="flex gap-2">
+              <StatusPill label="Knowledge Base" ok={health.chroma === "reachable"} />
+              <StatusPill label={provider === "gemini" ? "Gemini" : "Ollama"} ok={Boolean(modelOk)} />
+            </div>
+          )}
+        </div>
       </header>
       <div className="grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[280px_1fr]">
         <aside className="hidden flex-col overflow-hidden border-r border-zinc-200 md:flex dark:border-zinc-800">
