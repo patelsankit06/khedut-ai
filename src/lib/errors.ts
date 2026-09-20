@@ -34,8 +34,13 @@ export function toErrorPayload(error: unknown): {
   }
 
   console.error(error);
+  // TEMP DIAGNOSTIC: surfacing the real message to debug a Vercel-only PDF
+  // upload failure that Vercel's runtime-log API is blocking us from seeing
+  // directly (403, tier/scope-restricted). Revert to a generic message once
+  // diagnosed - don't leak internals in the long run.
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
   return {
-    body: { error: { code: "INTERNAL_ERROR", message: "Something went wrong." } },
+    body: { error: { code: "INTERNAL_ERROR", message: `Something went wrong. [DEBUG: ${message}]` } },
     status: 500,
   };
 }
