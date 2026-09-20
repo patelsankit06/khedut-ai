@@ -12,6 +12,14 @@ const nextConfig: NextConfig = {
   // dynamic import at runtime. Bundling it breaks that resolution ("Setting up
   // fake worker failed"); loading it via native Node require does not.
   serverExternalPackages: ["pdf-parse", "pdfjs-dist"],
+  // LangChain's PDFLoader loads pdf-parse's bundled pdf.js build via
+  // import(aVariable) rather than a string literal - Vercel's build-time file
+  // tracer can't statically resolve that, so the file silently isn't included
+  // in the deployed function and PDF uploads fail there (works fine locally,
+  // where the full node_modules tree is on disk regardless of tracing).
+  outputFileTracingIncludes: {
+    "/api/ingest": ["./node_modules/pdf-parse/**/*", "./node_modules/pdfjs-dist/**/*"],
+  },
 };
 
 export default nextConfig;
