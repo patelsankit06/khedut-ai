@@ -1,5 +1,7 @@
 # 🌱 Khedut AI — Smart Farming Assistant
 
+[Patelsankit Portfolio](https://patelsankit2.vercel.app/)
+
 A general-purpose chatbot with a domain specialty: it answers farming questions (crop stages, soil, irrigation, fertilizers, diseases, pest management) grounded in a curated agriculture knowledge base with crop filtering, and falls back to normal conversational ability - like any general AI chatbot - for everything else (general knowledge, small talk, follow-ups), using recent conversation history so it stays coherent across turns.
 
 **Pipeline:** curated crop guides (Markdown) → split into `## `-headed sections → chunk → embed → store in Chroma with `crop`/`category` metadata → retrieve top-K, optionally filtered by selected crop → if relevant matches were found, generate an answer grounded in them; otherwise generate a normal answer from the model's own knowledge and the conversation history - streamed either way, with safety-conscious guardrails for farming chemical questions.
