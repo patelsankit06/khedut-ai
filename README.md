@@ -19,8 +19,8 @@ Chat:    Question (+ selected crop) -> OllamaEmbeddings.embedQuery()
 - **Knowledge base:** 5 crops (pomegranate, tomato, wheat, cotton, potato) covering crop stages, soil, irrigation, fertilizers/nutrients, diseases, pests, and harvesting. Pomegranate is the primary/most detailed crop. There's also a `general`-crop "About Khedut AI" doc so meta-questions ("what can you do?", "what can I ask?") get a real answer instead of a knowledge-base miss. See `data/knowledge-base/*.md`.
 - **Relevance cutoff:** retrieved chunks past a cosine-distance threshold (0.8) are dropped before citing/answering, so off-topic questions get a clean "I don't know" instead of misleading citations to unrelated chunks.
 - **Crop filtering:** each chunk is tagged with a `crop` (or `"general"` for ad-hoc uploads). Selecting a crop in the sidebar filters retrieval to that crop's chunks plus any general uploads — a lightweight form of metadata-filtered RAG.
-- **Embeddings + chat generation:** [Ollama](https://ollama.com), run locally — no API key, no rate limits (see `src/lib/ollama/`). Default models: `llama3.2` for chat, `nomic-embed-text` for embeddings.
-- **Vector store:** [Chroma](https://www.trychroma.com/), run via Docker.
+- **Embeddings + chat generation:** switchable between two providers via a sidebar toggle - [Ollama](https://ollama.com) (local, no API key, no rate limits; `llama3.2` + `nomic-embed-text`, see `src/lib/ollama/`) or [Gemini](https://aistudio.google.com/apikey) (hosted, needs `GEMINI_API_KEY`; `gemini-flash-latest` + `gemini-embedding-001`, see `src/lib/gemini/`). `LLM_PROVIDER` in `.env.local` sets the server-side default; the toggle overrides it per session.
+- **Vector store:** [Chroma](https://www.trychroma.com/), run via Docker. Each provider gets its own collection (`CHROMA_COLLECTION_OLLAMA` / `CHROMA_COLLECTION_GEMINI`) since the two embedding models produce differently-sized vectors that can't share an index - switching providers means seeding that provider's collection separately.
 - **Safety:** the system prompt instructs the model to never state a specific pesticide/fertilizer brand or dosage unless the retrieved context explicitly gives it, to present disease symptoms as "possible causes" rather than a diagnosis, and to recommend a local agricultural expert when unsure.
 - **Additional documents:** the original generic upload pipeline (PDF/DOCX/TXT/Markdown) is still available in the sidebar for supplementary material; uploads are tagged `crop: "general"` so they're always searchable regardless of the selected crop.
 
@@ -29,6 +29,13 @@ Chat:    Question (+ selected crop) -> OllamaEmbeddings.embedQuery()
 - Node.js 20+
 - Docker (either the `docker compose` v2 plugin or the standalone `docker-compose` v1 binary)
 - [Ollama](https://ollama.com/download) installed and running locally (`ollama serve`, or it's already running as a background service on most installs). Standard install: `curl -fsSL https://ollama.com/install.sh | sh` (needs sudo). Without sudo, download the `ollama-linux-<arch>.tar.zst` asset from the [latest GitHub release](https://github.com/ollama/ollama/releases/latest), extract it anywhere (e.g. `~/.local/ollama`), and run `<extract-dir>/bin/ollama serve` - it stores models under `~/.ollama/models` either way.
+- Optional: a free Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey), only needed if you want the Gemini toggle option - Ollama alone is enough to run the app.
+
+> **Restarting after a reboot:** in this environment Ollama was installed without root access (no systemd service), so it doesn't start automatically. After every reboot, start it manually before running the app:
+> ```bash
+> ~/.local/ollama/bin/ollama serve
+> ```
+> Leave it running in that terminal (or background it with `&`), then continue with Setup below. If you installed Ollama the standard way (`curl -fsSL https://ollama.com/install.sh | sh`) on a machine with sudo, it runs as a service and you can skip this.
 
 ## Setup
 
@@ -46,7 +53,16 @@ Confirm Ollama is up: `curl http://localhost:11434/api/tags`.
 
 CPU-only inference works fine for local development/demo purposes with these small models, just expect answers to stream noticeably slower than a hosted API. If you have more RAM/a GPU available, a larger chat model (e.g. `llama3.1:8b`) will give better answer quality — just update `OLLAMA_CHAT_MODEL` in `.env.local` after pulling it.
 
-Open http://localhost:3000, then click **Load Knowledge Base** in the sidebar to seed all 5 crop guides into Chroma (can also be triggered directly: `curl -X POST http://localhost:3000/api/seed`). Re-run it any time after editing a file in `data/knowledge-base/` to re-seed.
+Open http://localhost:3000, then click **Load Knowledge Base** in the sidebar to seed all 5 crop guides into Chroma for the currently-selected provider (can also be triggered directly: `curl -X POST http://localhost:3000/api/seed -H "Content-Type: application/json" -d '{"provider":"ollama"}'`). Re-run it any time after editing a file in `data/knowledge-base/`, or after switching providers for the first time, to (re-)seed.
+
+### Enabling Gemini
+
+The **AI Model** toggle in the sidebar lets you switch between Ollama and Gemini per session - no restart needed. To enable the Gemini option:
+1. Get a free key from [Google AI Studio](https://aistudio.google.com/apikey).
+2. Set `GEMINI_API_KEY=...` in `.env.local`.
+3. Reload the page, switch the toggle to Gemini, then click **Load Knowledge Base** to seed Gemini's own collection (it starts empty - Ollama's seeded data doesn't carry over, since the two use different embedding vector spaces).
+
+Without a key set, the Gemini option is shown disabled in the sidebar and the app runs on Ollama only.
 
 ## Demo script
 
@@ -58,6 +74,7 @@ Open http://localhost:3000, then click **Load Knowledge Base** in the sidebar to
 6. Ask a farming question, then reply "yes" or "tell me more" to whatever it offers next — conversation history lets it resolve the follow-up instead of treating "yes" as a fresh, contentless query.
 7. Upload an extra PDF/Markdown file via **Additional Documents** — it's tagged `general` and stays searchable no matter which crop is selected.
 8. Stop Chroma (`docker compose stop`) and ask another question — the UI shows a clear "vector database unreachable" error instead of crashing.
+9. With `GEMINI_API_KEY` set, switch the **AI Model** toggle to Gemini, seed its knowledge base, and ask the same pomegranate question — same behavior, different model/collection, answers arrive noticeably faster than local Ollama inference.
 
 ## Configuration
 
@@ -65,11 +82,16 @@ All in `.env.local`:
 
 | Variable | Default | Notes |
 |---|---|---|
+| `LLM_PROVIDER` | `ollama` | server-side default (`ollama` or `gemini`); the sidebar toggle overrides this per session |
 | `OLLAMA_URL` | `http://localhost:11434` | |
 | `OLLAMA_CHAT_MODEL` | `llama3.2` | must be pulled first: `ollama pull llama3.2` |
 | `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | must be pulled first: `ollama pull nomic-embed-text`; changing this requires re-seeding (different models produce differently-sized vectors) |
+| `GEMINI_API_KEY` | — | optional; enables the Gemini toggle option when set |
+| `GEMINI_CHAT_MODEL` | `gemini-flash-latest` | rolling alias to Google's current free-tier flash model; pin a dated id for reproducible answers |
+| `GEMINI_EMBEDDING_MODEL` | `gemini-embedding-001` | |
 | `CHROMA_URL` | `http://localhost:8000` | |
-| `CHROMA_COLLECTION` | `khedut_chunks_ollama` | single shared collection for both the seeded knowledge base and any uploads |
+| `CHROMA_COLLECTION_OLLAMA` | `khedut_chunks_ollama` | Ollama's collection - also seeded/queried by uploads made while Ollama is selected |
+| `CHROMA_COLLECTION_GEMINI` | `khedut_chunks_gemini` | Gemini's collection, separate because its embeddings aren't compatible with Ollama's |
 | `MAX_UPLOAD_MB` | `20` | |
 
 ## Extending the knowledge base
@@ -101,3 +123,4 @@ Each `## Heading` becomes a separately-chunked, separately-cited `category`. Re-
 - `nomic-embed-text` separates topics less sharply than a hosted embedding model - the relevance cutoff in `src/lib/retrieval.ts` is tuned accordingly, and meta-questions about the assistant itself ("what do you do?") are matched by a small keyword pattern rather than relying on embedding similarity alone, since the two weren't reliably distinguishable by distance score with this model.
 - Retrieval only embeds the current message, not the full conversation - conversation history is passed to the model for generation (so "yes"/"tell me more" work), but a follow-up that depends on earlier context for the *knowledge-base search itself* (e.g. "and how do I irrigate it?" three turns after mentioning wheat) may not retrieve the right chunks. History is also capped to the last 8 non-empty messages client-side, to keep prompts short for local CPU inference.
 - `data/registry.json` and `data/kb-status.json` are flat files, not a database — fine for a single-user local demo.
+- Uploaded documents (**Additional Documents**) aren't tracked by which provider ingested them — a file uploaded while Ollama was selected won't be found when querying under Gemini (and vice versa), though it stays listed in the sidebar either way; deleting it removes it from both collections regardless.

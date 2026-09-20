@@ -1,11 +1,11 @@
 import { ChromaClient } from "chromadb";
 import { Chroma } from "@langchain/community/vectorstores/chroma";
-import { getConfig } from "@/lib/config";
+import { getConfig, collectionNameFor, type LlmProvider } from "@/lib/config";
 import { AppError } from "@/lib/errors";
 import { OllamaEmbeddings } from "@/lib/ollama/embeddings";
+import { GeminiEmbeddings } from "@/lib/gemini/embeddings";
 
 let chromaClient: ChromaClient | null = null;
-let vectorStore: Chroma | null = null;
 
 function getChromaClient(): ChromaClient {
   if (!chromaClient) {
@@ -32,26 +32,56 @@ export async function isOllamaReachable(): Promise<boolean> {
   }
 }
 
-// Ollama's embedding models are symmetric (no separate query/document
-// taskType like Gemini's), so a single store/embeddings instance covers
-// both ingestion and querying.
-function getVectorStore(): Chroma {
-  if (!vectorStore) {
-    const config = getConfig();
-    vectorStore = new Chroma(
-      new OllamaEmbeddings({ baseUrl: config.ollamaUrl, model: config.ollamaEmbeddingModel }),
-      { url: config.chromaUrl, collectionName: config.chromaCollection }
+export function isGeminiConfigured(): boolean {
+  return Boolean(getConfig().geminiApiKey);
+}
+
+function requireGeminiApiKey(): string {
+  const apiKey = getConfig().geminiApiKey;
+  if (!apiKey) {
+    throw new AppError(
+      "MODEL_UNAVAILABLE",
+      "GEMINI_API_KEY is not set. Add it to .env.local to use the Gemini provider.",
+      503
     );
   }
-  return vectorStore;
+  return apiKey;
 }
 
-export function getIngestStore(): Chroma {
-  return getVectorStore();
+// Ollama's embedding model is symmetric (no separate query/document taskType
+// like Gemini's), so ingest and query share one instance/store per provider
+// for Ollama, but Gemini needs two differently-configured embeddings
+// instances (RETRIEVAL_DOCUMENT vs RETRIEVAL_QUERY) pointed at the same
+// collection - see src/lib/gemini/embeddings.ts.
+const ingestStores = new Map<LlmProvider, Chroma>();
+const queryStores = new Map<LlmProvider, Chroma>();
+
+export function getIngestStore(provider: LlmProvider): Chroma {
+  let store = ingestStores.get(provider);
+  if (!store) {
+    const config = getConfig();
+    const embeddings =
+      provider === "gemini"
+        ? new GeminiEmbeddings({ apiKey: requireGeminiApiKey(), model: config.geminiEmbeddingModel, taskType: "RETRIEVAL_DOCUMENT" })
+        : new OllamaEmbeddings({ baseUrl: config.ollamaUrl, model: config.ollamaEmbeddingModel });
+    store = new Chroma(embeddings, { url: config.chromaUrl, collectionName: collectionNameFor(config, provider) });
+    ingestStores.set(provider, store);
+  }
+  return store;
 }
 
-export function getQueryStore(): Chroma {
-  return getVectorStore();
+export function getQueryStore(provider: LlmProvider): Chroma {
+  let store = queryStores.get(provider);
+  if (!store) {
+    const config = getConfig();
+    const embeddings =
+      provider === "gemini"
+        ? new GeminiEmbeddings({ apiKey: requireGeminiApiKey(), model: config.geminiEmbeddingModel, taskType: "RETRIEVAL_QUERY" })
+        : new OllamaEmbeddings({ baseUrl: config.ollamaUrl, model: config.ollamaEmbeddingModel });
+    store = new Chroma(embeddings, { url: config.chromaUrl, collectionName: collectionNameFor(config, provider) });
+    queryStores.set(provider, store);
+  }
+  return store;
 }
 
 export function toVectorStoreError(error: unknown): AppError {

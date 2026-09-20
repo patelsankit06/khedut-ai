@@ -5,14 +5,18 @@ import { UploadPanel } from "@/components/UploadPanel";
 import { ChatWindow } from "@/components/ChatWindow";
 import { CropSelector } from "@/components/CropSelector";
 import { KnowledgeBasePanel } from "@/components/KnowledgeBasePanel";
+import { ProviderSelector } from "@/components/ProviderSelector";
 import { isCropId, type CropId } from "@/lib/crops";
+import type { LlmProvider } from "@/lib/config";
 
 interface HealthState {
   chroma: "reachable" | "unreachable";
   ollama: "reachable" | "unreachable";
+  gemini: "configured" | "missing_api_key";
 }
 
 const CROP_STORAGE_KEY = "khedut-ai:crop";
+const PROVIDER_STORAGE_KEY = "khedut-ai:provider";
 
 function loadStoredCrop(): CropId | null {
   if (typeof window === "undefined") return null;
@@ -20,19 +24,33 @@ function loadStoredCrop(): CropId | null {
   return stored && isCropId(stored) ? stored : null;
 }
 
+function isLlmProvider(value: string): value is LlmProvider {
+  return value === "ollama" || value === "gemini";
+}
+
+function loadStoredProvider(): LlmProvider | null {
+  if (typeof window === "undefined") return null;
+  const stored = window.localStorage.getItem(PROVIDER_STORAGE_KEY);
+  return stored && isLlmProvider(stored) ? stored : null;
+}
+
 export default function Home() {
   const [health, setHealth] = useState<HealthState | null>(null);
-  // Starts null (matching the server, which has no localStorage) and loads
-  // any stored crop in an effect below to avoid a hydration mismatch.
+  // Both start at a value consistent with what the server renders (no
+  // localStorage there) and load any stored value in an effect below, to
+  // avoid a hydration mismatch.
   const [crop, setCrop] = useState<CropId | null>(null);
+  const [provider, setProvider] = useState<LlmProvider>("ollama");
 
   useEffect(() => {
     // Deliberately loading external (browser-only) state after mount, not
     // synchronizing derived state - localStorage isn't available during SSR,
     // so reading it any earlier would cause a hydration mismatch.
-    const stored = loadStoredCrop();
+    const storedCrop = loadStoredCrop();
+    const storedProvider = loadStoredProvider();
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (stored) setCrop(stored);
+    if (storedCrop) setCrop(storedCrop);
+    if (storedProvider) setProvider(storedProvider);
   }, []);
 
   useEffect(() => {
@@ -44,7 +62,7 @@ export default function Home() {
         const data = (await response.json()) as HealthState;
         if (!cancelled) setHealth(data);
       } catch {
-        if (!cancelled) setHealth({ chroma: "unreachable", ollama: "unreachable" });
+        if (!cancelled) setHealth({ chroma: "unreachable", ollama: "unreachable", gemini: "missing_api_key" });
       }
     }
 
@@ -55,6 +73,16 @@ export default function Home() {
       clearInterval(interval);
     };
   }, []);
+
+  // Gemini was selected (and persisted from a previous session) but the key
+  // has since been removed - fall back to Ollama instead of silently
+  // failing every request.
+  useEffect(() => {
+    if (provider === "gemini" && health?.gemini === "missing_api_key") {
+      handleSelectProvider("ollama");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [health]);
 
   function handleSelectCrop(next: CropId | null) {
     setCrop(next);
@@ -69,6 +97,17 @@ export default function Home() {
     }
   }
 
+  function handleSelectProvider(next: LlmProvider) {
+    setProvider(next);
+    try {
+      window.localStorage.setItem(PROVIDER_STORAGE_KEY, next);
+    } catch {
+      // Ignore storage failures (e.g. private browsing).
+    }
+  }
+
+  const modelOk = provider === "gemini" ? health?.gemini === "configured" : health?.ollama === "reachable";
+
   return (
     <div className="flex h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
       <header className="flex items-center justify-between border-b border-zinc-200 px-6 py-3 dark:border-zinc-800">
@@ -76,20 +115,27 @@ export default function Home() {
         {health && (
           <div className="flex gap-2 text-xs">
             <StatusPill label="Knowledge Base" ok={health.chroma === "reachable"} />
-            <StatusPill label="AI Model" ok={health.ollama === "reachable"} />
+            <StatusPill label={provider === "gemini" ? "Gemini" : "Ollama"} ok={Boolean(modelOk)} />
           </div>
         )}
       </header>
       <div className="grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[280px_1fr]">
         <aside className="hidden flex-col overflow-hidden border-r border-zinc-200 md:flex dark:border-zinc-800">
-          <KnowledgeBasePanel />
+          <ProviderSelector
+            selected={provider}
+            onSelect={handleSelectProvider}
+            geminiConfigured={health?.gemini === "configured"}
+          />
+          {/* Remounts (fresh status/error state) whenever the provider changes,
+              instead of clearing that state imperatively in an effect. */}
+          <KnowledgeBasePanel key={provider} provider={provider} />
           <CropSelector selected={crop} onSelect={handleSelectCrop} />
           <div className="min-h-0 flex-1 overflow-hidden">
-            <UploadPanel />
+            <UploadPanel provider={provider} />
           </div>
         </aside>
         <section className="flex flex-col overflow-hidden">
-          <ChatWindow crop={crop} />
+          <ChatWindow crop={crop} provider={provider} />
         </section>
       </div>
     </div>

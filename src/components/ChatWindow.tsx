@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { Citation } from "@/lib/retrieval";
 import type { CropId } from "@/lib/crops";
 import type { ChatTurn } from "@/lib/chatTurn";
+import type { LlmProvider } from "@/lib/config";
 import { MessageBubble, type ChatMessage } from "./MessageBubble";
 
 // Kept short since local CPU inference is already slow - a long history adds
@@ -33,7 +34,7 @@ function loadStoredMessages(): ChatMessage[] {
   }
 }
 
-export function ChatWindow({ crop }: { crop: CropId | null }) {
+export function ChatWindow({ crop, provider }: { crop: CropId | null; provider: LlmProvider }) {
   // Starts empty (matching what the server renders, since it has no
   // localStorage) and loads any stored conversation in an effect below -
   // reading localStorage during the initial render would make the client's
@@ -110,6 +111,7 @@ export function ChatWindow({ crop }: { crop: CropId | null }) {
         body: JSON.stringify({
           question: trimmed,
           crop: crop ?? undefined,
+          provider,
           history,
         }),
       });

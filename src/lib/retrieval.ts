@@ -1,5 +1,6 @@
 import { Document } from "@langchain/core/documents";
 import type { Chroma } from "@langchain/community/vectorstores/chroma";
+import type { LlmProvider } from "@/lib/config";
 import { getQueryStore, toVectorStoreError } from "@/lib/vectorstore";
 
 type CropFilter = Chroma["FilterType"];
@@ -26,9 +27,15 @@ const TOP_K = 4;
 // well under 0.75, while off-topic trivia scores 1.05+ even for the
 // "closest" chunk, since nearest-neighbor search always returns *something*.
 // Chunks past this threshold are dropped so unrelated questions don't
-// surface misleading citations. Re-calibrate if the embedding model changes
-// - a smaller local model separates topics less sharply than a hosted one.
-const MAX_RELEVANT_DISTANCE = 1.0;
+// surface misleading citations. Calibrated per provider, since each
+// embedding model separates topics by a different margin: gemini-embedding-001
+// (hosted, larger) separates more sharply than nomic-embed-text (local/small)
+// - on-topic well under 0.65, off-topic 0.82+. Re-calibrate a provider's
+// entry if its embedding model changes.
+const MAX_RELEVANT_DISTANCE: Record<LlmProvider, number> = {
+  ollama: 1.0,
+  gemini: 0.8,
+};
 
 // nomic-embed-text doesn't separate "meta questions about the assistant"
 // from generic off-topic trivia as sharply as a larger hosted embedding
@@ -52,18 +59,19 @@ function buildCropFilter(crop?: string): CropFilter | undefined {
   return { $or: [{ crop }, { crop: "general" }] };
 }
 
-export async function retrieve(question: string, crop?: string): Promise<RetrievalResult> {
+export async function retrieve(question: string, crop: string | undefined, provider: LlmProvider): Promise<RetrievalResult> {
   const isMetaQuestion = META_QUESTION_PATTERN.test(question);
   const filter: CropFilter | undefined = isMetaQuestion ? { crop: "general" } : buildCropFilter(crop);
 
   let rawResults: [Document, number][];
   try {
-    rawResults = await getQueryStore().similaritySearchWithScore(question, TOP_K, filter);
+    rawResults = await getQueryStore(provider).similaritySearchWithScore(question, TOP_K, filter);
   } catch (error) {
     throw toVectorStoreError(error);
   }
 
-  const results = isMetaQuestion ? rawResults : rawResults.filter(([, score]) => score <= MAX_RELEVANT_DISTANCE);
+  const maxDistance = MAX_RELEVANT_DISTANCE[provider];
+  const results = isMetaQuestion ? rawResults : rawResults.filter(([, score]) => score <= maxDistance);
 
   const citations: Citation[] = results.map(([doc, score], index) => ({
     n: index + 1,

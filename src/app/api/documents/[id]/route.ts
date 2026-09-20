@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { listDocuments, removeDocument } from "@/lib/documentRegistry";
 import { readDocumentContent, deleteDocumentContent } from "@/lib/documentContent";
 import { AppError, toErrorPayload } from "@/lib/errors";
-import { getIngestStore, toVectorStoreError } from "@/lib/vectorstore";
+import { getIngestStore } from "@/lib/vectorstore";
+import type { LlmProvider } from "@/lib/config";
+
+const PROVIDERS: LlmProvider[] = ["ollama", "gemini"];
 
 export const runtime = "nodejs";
 
@@ -38,10 +41,15 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
       throw new AppError("NOT_FOUND", "Document not found.", 404);
     }
 
-    try {
-      await getIngestStore().delete({ filter: { documentId: id } });
-    } catch (error) {
-      throw toVectorStoreError(error);
+    // Uploads aren't tracked by which provider ingested them, so best-effort
+    // delete from both providers' collections - a no-op wherever the id
+    // doesn't exist (including when Gemini isn't configured at all).
+    for (const provider of PROVIDERS) {
+      try {
+        await getIngestStore(provider).delete({ filter: { documentId: id } });
+      } catch {
+        // ignore
+      }
     }
 
     await removeDocument(id);

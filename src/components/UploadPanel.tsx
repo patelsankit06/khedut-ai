@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { DocumentRecord } from "@/lib/documentRegistry";
+import type { LlmProvider } from "@/lib/config";
 import { DocumentPreviewModal } from "./DocumentPreviewModal";
 
 type UploadStatus =
@@ -9,7 +10,7 @@ type UploadStatus =
   | { kind: "uploading"; filename: string }
   | { kind: "error"; message: string };
 
-export function UploadPanel() {
+export function UploadPanel({ provider }: { provider: LlmProvider }) {
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [status, setStatus] = useState<UploadStatus>({ kind: "idle" });
   const [refreshToken, setRefreshToken] = useState(0);
@@ -44,6 +45,7 @@ export function UploadPanel() {
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("provider", provider);
       const response = await fetch("/api/ingest", { method: "POST", body: formData });
       const data = await response.json();
       if (!response.ok) {
@@ -83,7 +85,9 @@ export function UploadPanel() {
     <div className="flex h-full flex-col gap-4 p-4">
       <div>
         <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Additional Documents</h2>
-        <p className="mt-1 text-xs text-zinc-500">Optional extra sources - PDF, DOCX, TXT, or Markdown</p>
+        <p className="mt-1 text-xs text-zinc-500">
+          Optional extra sources - PDF, DOCX, TXT, or Markdown. Indexed under {provider}.
+        </p>
       </div>
 
       <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-500 transition hover:border-indigo-400 hover:text-indigo-600 dark:border-zinc-700">

@@ -3,7 +3,8 @@ import { z } from "zod";
 import { getConfig } from "@/lib/config";
 import { AppError, toErrorPayload } from "@/lib/errors";
 import { retrieve, buildPrompt, SYSTEM_INSTRUCTION } from "@/lib/retrieval";
-import { streamAnswer } from "@/lib/ollama/chat";
+import { streamAnswer as streamOllamaAnswer } from "@/lib/ollama/chat";
+import { streamAnswer as streamGeminiAnswer } from "@/lib/gemini/chat";
 import type { ChatTurn } from "@/lib/chatTurn";
 
 export const runtime = "nodejs";
@@ -16,6 +17,10 @@ const historyTurnSchema = z.object({
 const requestSchema = z.object({
   question: z.string().min(1).max(2000),
   crop: z.string().min(1).max(50).optional(),
+  // Overrides the server's default provider (LLM_PROVIDER in .env.local)
+  // for this request - lets the sidebar toggle switch models per session
+  // without a server restart.
+  provider: z.enum(["ollama", "gemini"]).optional(),
   // Recent prior turns, oldest first - lets the model resolve follow-ups
   // ("yes", "tell me more") instead of every question being answered in
   // isolation. Capped client-side; capped again here defensively.
@@ -45,11 +50,18 @@ export async function POST(request: NextRequest) {
   }
   const { question, crop, history } = parsed.data;
   const config = getConfig();
+  const provider = parsed.data.provider ?? config.llmProvider;
+
+  if (provider === "gemini" && !config.geminiApiKey) {
+    return errorResponse(
+      new AppError("MODEL_UNAVAILABLE", "GEMINI_API_KEY is not set. Add it to .env.local to use Gemini.", 503)
+    );
+  }
 
   let citations;
   let contextBlock;
   try {
-    ({ citations, contextBlock } = await retrieve(question, crop));
+    ({ citations, contextBlock } = await retrieve(question, crop, provider));
   } catch (error) {
     return errorResponse(error);
   }
@@ -62,12 +74,22 @@ export async function POST(request: NextRequest) {
         const currentTurn: ChatTurn = { role: "user", content: buildPrompt(question, contextBlock, crop) };
         const messages: ChatTurn[] = [...(history ?? []), currentTurn];
 
-        for await (const textChunk of streamAnswer({
-          baseUrl: config.ollamaUrl,
-          model: config.ollamaChatModel,
-          systemInstruction: SYSTEM_INSTRUCTION,
-          messages,
-        })) {
+        const tokens =
+          provider === "gemini"
+            ? streamGeminiAnswer({
+                apiKey: config.geminiApiKey!,
+                model: config.geminiChatModel,
+                systemInstruction: SYSTEM_INSTRUCTION,
+                messages,
+              })
+            : streamOllamaAnswer({
+                baseUrl: config.ollamaUrl,
+                model: config.ollamaChatModel,
+                systemInstruction: SYSTEM_INSTRUCTION,
+                messages,
+              });
+
+        for await (const textChunk of tokens) {
           controller.enqueue(encodeLine({ type: "token", data: textChunk }));
         }
         controller.enqueue(encodeLine({ type: "done" }));

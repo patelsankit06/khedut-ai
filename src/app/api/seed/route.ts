@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { getConfig } from "@/lib/config";
 import { AppError, toErrorPayload } from "@/lib/errors";
 import { loadKnowledgeBaseChunks } from "@/lib/knowledgeBase";
 import { getIngestStore, toVectorStoreError } from "@/lib/vectorstore";
@@ -6,13 +8,27 @@ import { readKnowledgeBaseStatus, writeKnowledgeBaseStatus } from "@/lib/knowled
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  const status = await readKnowledgeBaseStatus();
-  return NextResponse.json({ status });
+const providerSchema = z.enum(["ollama", "gemini"]);
+
+export async function GET(request: NextRequest) {
+  const requested = request.nextUrl.searchParams.get("provider");
+  const parsed = providerSchema.safeParse(requested);
+  const provider = parsed.success ? parsed.data : getConfig().llmProvider;
+
+  const status = await readKnowledgeBaseStatus(provider);
+  return NextResponse.json({ provider, status });
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
+    const body = await request.json().catch(() => ({}));
+    const parsedProvider = providerSchema.safeParse(body?.provider);
+    const provider = parsedProvider.success ? parsedProvider.data : getConfig().llmProvider;
+
+    if (provider === "gemini" && !getConfig().geminiApiKey) {
+      throw new AppError("MODEL_UNAVAILABLE", "GEMINI_API_KEY is not set. Add it to .env.local to use Gemini.", 503);
+    }
+
     const chunks = await loadKnowledgeBaseChunks();
     if (chunks.length === 0) {
       throw new AppError(
@@ -28,13 +44,13 @@ export async function POST() {
       // Best-effort: clears any previously seeded chunks for these crops so
       // re-seeding after editing a knowledge-base file doesn't leave stale
       // chunks behind. Fine if nothing existed yet.
-      await getIngestStore().delete({ filter: { documentId: { $in: documentIds } } });
+      await getIngestStore(provider).delete({ filter: { documentId: { $in: documentIds } } });
     } catch {
       // ignore - nothing to delete yet
     }
 
     try {
-      await getIngestStore().addDocuments(chunks, {
+      await getIngestStore(provider).addDocuments(chunks, {
         ids: chunks.map((chunk) => chunk.metadata.id as string),
       });
     } catch (error) {
@@ -52,9 +68,9 @@ export async function POST() {
       totalChunks: chunks.length,
       perCrop,
     };
-    await writeKnowledgeBaseStatus(status);
+    await writeKnowledgeBaseStatus(provider, status);
 
-    return NextResponse.json(status);
+    return NextResponse.json({ provider, ...status });
   } catch (error) {
     const { body, status } = toErrorPayload(error);
     return NextResponse.json(body, { status });

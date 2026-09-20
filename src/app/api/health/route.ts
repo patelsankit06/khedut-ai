@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isChromaReachable, isOllamaReachable } from "@/lib/vectorstore";
+import { isChromaReachable, isOllamaReachable, isGeminiConfigured } from "@/lib/vectorstore";
 
 export const runtime = "nodejs";
 
@@ -9,5 +9,6 @@ export async function GET() {
   return NextResponse.json({
     chroma: chromaReachable ? "reachable" : "unreachable",
     ollama: ollamaReachable ? "reachable" : "unreachable",
+    gemini: isGeminiConfigured() ? "configured" : "missing_api_key",
   });
 }

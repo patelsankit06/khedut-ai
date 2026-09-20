@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { getConfig } from "@/lib/config";
 import { AppError, toErrorPayload } from "@/lib/errors";
 import { loadDocument } from "@/lib/parsing/loadDocument";
@@ -9,6 +10,8 @@ import { addDocument } from "@/lib/documentRegistry";
 import { saveDocumentContent } from "@/lib/documentContent";
 
 export const runtime = "nodejs";
+
+const providerSchema = z.enum(["ollama", "gemini"]);
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,6 +25,15 @@ export async function POST(request: NextRequest) {
         "No file provided. Send a multipart/form-data request with a 'file' field.",
         400
       );
+    }
+
+    // Uploads are embedded and stored under whichever provider is currently
+    // selected in the UI, so they land in that provider's Chroma collection
+    // alongside the seeded knowledge base for it.
+    const parsedProvider = providerSchema.safeParse(formData.get("provider"));
+    const provider = parsedProvider.success ? parsedProvider.data : config.llmProvider;
+    if (provider === "gemini" && !config.geminiApiKey) {
+      throw new AppError("MODEL_UNAVAILABLE", "GEMINI_API_KEY is not set. Add it to .env.local to use Gemini.", 503);
     }
 
     if (file.size === 0) {
@@ -45,7 +57,7 @@ export async function POST(request: NextRequest) {
     });
 
     try {
-      await getIngestStore().addDocuments(chunks, {
+      await getIngestStore(provider).addDocuments(chunks, {
         ids: chunks.map((chunk) => chunk.metadata.id as string),
       });
     } catch (error) {
