@@ -1,8 +1,8 @@
 # 🌱 Khedut AI — Smart Farming Assistant
 
-A general-purpose chatbot with a domain specialty: it answers farming questions (crop stages, soil, irrigation, fertilizers, diseases, pest management) grounded in a curated agriculture knowledge base with cited sources and crop filtering, and falls back to normal conversational ability - like any general AI chatbot - for everything else (general knowledge, small talk, follow-ups), using recent conversation history so it stays coherent across turns.
+A general-purpose chatbot with a domain specialty: it answers farming questions (crop stages, soil, irrigation, fertilizers, diseases, pest management) grounded in a curated agriculture knowledge base with crop filtering, and falls back to normal conversational ability - like any general AI chatbot - for everything else (general knowledge, small talk, follow-ups), using recent conversation history so it stays coherent across turns.
 
-**Pipeline:** curated crop guides (Markdown) → split into `## `-headed sections → chunk → embed → store in Chroma with `crop`/`category` metadata → retrieve top-K, optionally filtered by selected crop → if relevant matches were found, generate a cited answer grounded in them; otherwise generate a normal answer from the model's own knowledge and the conversation history - streamed either way, with safety-conscious guardrails for farming chemical questions.
+**Pipeline:** curated crop guides (Markdown) → split into `## `-headed sections → chunk → embed → store in Chroma with `crop`/`category` metadata → retrieve top-K, optionally filtered by selected crop → if relevant matches were found, generate an answer grounded in them; otherwise generate a normal answer from the model's own knowledge and the conversation history - streamed either way, with safety-conscious guardrails for farming chemical questions.
 
 ## Architecture
 
@@ -10,19 +10,22 @@ A general-purpose chatbot with a domain specialty: it answers farming questions 
 Seed:    data/knowledge-base/<crop>.md -> loadKnowledgeBaseChunks() [split by ## heading -> chunk]
          -> OllamaEmbeddings.embedDocuments() -> Chroma upsert (metadata: crop, category, source)
 
-Chat:    Question (+ selected crop) -> OllamaEmbeddings.embedQuery()
+Chat:    Question (+ selected crop + recent history) -> OllamaEmbeddings.embedQuery()
          -> Chroma similaritySearchWithScore(k=4, filter: crop OR "general")
-         -> grounded prompt with numbered citations -> Ollama streamed generation -> cited answer
+         -> grounded prompt (if relevant chunks found) -> Ollama/Gemini streamed generation -> answer
 ```
 
 - **Stack:** Next.js (App Router) + TypeScript, single codebase for API and UI.
 - **Knowledge base:** 5 crops (pomegranate, tomato, wheat, cotton, potato) covering crop stages, soil, irrigation, fertilizers/nutrients, diseases, pests, and harvesting. Pomegranate is the primary/most detailed crop. There's also a `general`-crop "About Khedut AI" doc so meta-questions ("what can you do?", "what can I ask?") get a real answer instead of a knowledge-base miss. See `data/knowledge-base/*.md`.
-- **Relevance cutoff:** retrieved chunks past a cosine-distance threshold (0.8) are dropped before citing/answering, so off-topic questions get a clean "I don't know" instead of misleading citations to unrelated chunks.
+- **Relevance cutoff:** retrieved chunks past a cosine-distance threshold are dropped before being used as context, so off-topic questions get a normal answer from the model's general knowledge instead of being forced through irrelevant knowledge-base content. The system prompt tells the model to ground its answer in the retrieved context when present.
+- **No source citations in the UI:** retrieval still returns which chunks matched (see `src/lib/retrieval.ts`'s `Citation` type) and that data flows through the API response, but the chat UI doesn't render it - by design, so a general-knowledge answer and a knowledge-base-grounded one look the same to the user. Re-adding a citations display would mean re-adding `src/components/CitationList.tsx` (removed) and a render call in `src/components/MessageBubble.tsx`.
 - **Crop filtering:** each chunk is tagged with a `crop` (or `"general"` for ad-hoc uploads). Selecting a crop in the sidebar filters retrieval to that crop's chunks plus any general uploads — a lightweight form of metadata-filtered RAG.
 - **Embeddings + chat generation:** switchable between two providers via a sidebar toggle - [Ollama](https://ollama.com) (local, no API key, no rate limits; `llama3.2` + `nomic-embed-text`, see `src/lib/ollama/`) or [Gemini](https://aistudio.google.com/apikey) (hosted, needs `GEMINI_API_KEY`; `gemini-flash-latest` + `gemini-embedding-001`, see `src/lib/gemini/`). `LLM_PROVIDER` in `.env.local` sets the server-side default; the toggle overrides it per session.
 - **Vector store:** [Chroma](https://www.trychroma.com/), run via Docker. Each provider gets its own collection (`CHROMA_COLLECTION_OLLAMA` / `CHROMA_COLLECTION_GEMINI`) since the two embedding models produce differently-sized vectors that can't share an index - switching providers means seeding that provider's collection separately.
+- **Conversation history:** the last 8 non-empty messages are sent with each request so follow-ups ("yes", "tell me more") are understood in context, using each provider's native multi-turn chat API (see `src/lib/chatTurn.ts`).
 - **Safety:** the system prompt instructs the model to never state a specific pesticide/fertilizer brand or dosage unless the retrieved context explicitly gives it, to present disease symptoms as "possible causes" rather than a diagnosis, and to recommend a local agricultural expert when unsure.
 - **Additional documents:** the original generic upload pipeline (PDF/DOCX/TXT/Markdown) is still available in the sidebar for supplementary material; uploads are tagged `crop: "general"` so they're always searchable regardless of the selected crop.
+- **Chat management:** **Clear Chat** wipes the whole conversation (with a confirmation prompt); each message also has a hover-revealed **⋮** menu with a **Delete** option to remove just that one message. Both update `localStorage`, so a refresh doesn't bring deleted messages back.
 
 ## Prerequisites
 
@@ -67,14 +70,15 @@ Without a key set, the Gemini option is shown disabled in the sidebar and the ap
 ## Demo script
 
 1. Click **Load Knowledge Base** in the sidebar — it reports chunk counts per crop.
-2. Select **Pomegranate**, then ask "My pomegranate leaves have black spots, what could it be?" — the answer cites the Diseases section and recommends consulting a local expert rather than naming a chemical.
-3. Switch the crop to **Tomato** and ask "What fertilizer approach is recommended during flowering?" — citations now come only from the tomato guide.
+2. Select **Pomegranate**, then ask "My pomegranate leaves have black spots, what could it be?" — the answer draws on the Diseases section and recommends consulting a local expert rather than naming a chemical.
+3. Switch the crop to **Tomato** and ask "What fertilizer approach is recommended during flowering?" — the answer is specific to tomato, not a mix of crops.
 4. Deselect the crop (click it again) and ask a general question — retrieval searches across all crops.
-5. Ask something entirely unrelated to farming (e.g. "what's the capital of France?") — no citations, but it still answers normally instead of refusing.
+5. Ask something entirely unrelated to farming (e.g. "what's the capital of France?") — it still answers normally instead of refusing.
 6. Ask a farming question, then reply "yes" or "tell me more" to whatever it offers next — conversation history lets it resolve the follow-up instead of treating "yes" as a fresh, contentless query.
-7. Upload an extra PDF/Markdown file via **Additional Documents** — it's tagged `general` and stays searchable no matter which crop is selected.
-8. Stop Chroma (`docker compose stop`) and ask another question — the UI shows a clear "vector database unreachable" error instead of crashing.
-9. With `GEMINI_API_KEY` set, switch the **AI Model** toggle to Gemini, seed its knowledge base, and ask the same pomegranate question — same behavior, different model/collection, answers arrive noticeably faster than local Ollama inference.
+7. Hover a message to reveal its **⋮** menu and delete it, then refresh the page — it stays deleted. Try **Clear Chat** too.
+8. Upload an extra PDF/Markdown file via **Additional Documents** — it's tagged `general` and stays searchable no matter which crop is selected.
+9. Stop Chroma (`docker compose stop`) and ask another question — the UI shows a clear "vector database unreachable" error instead of crashing.
+10. With `GEMINI_API_KEY` set, switch the **AI Model** toggle to Gemini, seed its knowledge base, and ask the same pomegranate question — same behavior, different model/collection, answers arrive noticeably faster than local Ollama inference.
 
 ## Configuration
 
@@ -111,15 +115,15 @@ source: "Khedut AI Mango Cultivation Guide"
 ...content...
 ```
 
-Each `## Heading` becomes a separately-chunked, separately-cited `category`. Re-run **Load Knowledge Base** (or `POST /api/seed`) to ingest changes — it replaces that crop's previously seeded chunks rather than duplicating them.
+Each `## Heading` becomes a separately-chunked, separately-tagged `category` in the chunk's metadata. Re-run **Load Knowledge Base** (or `POST /api/seed`) to ingest changes — it replaces that crop's previously seeded chunks rather than duplicating them.
 
 ## Known limitations (Phase 1 MVP)
 
 - English only — Hindi/Gujarati support, voice input, and image-based disease analysis are Phase 2/3 ideas, not implemented here.
 - Crop selection filters by metadata only; there's no keyword/hybrid search layered on top of vector similarity yet.
 - Knowledge base content is drafted general agronomy guidance for demo purposes, not sourced from an authoritative agricultural extension document — swap in real sources before any real-world use.
-- Single shared Chroma collection, no per-user auth — fine for a local demo.
-- Local CPU inference is slower than a hosted API (tens of seconds per answer on a laptop CPU with `llama3.2`), and a 3B model follows instructions (citation formatting, always using retrieved context) less consistently than a larger hosted model - occasional answers skip the `[1]` citation markers or, rarely, say "not enough information" despite relevant context being present. Swap in a larger/GPU-accelerated model (`OLLAMA_CHAT_MODEL`) if quality matters more than zero-cost local dev.
+- No per-user auth or multi-tenancy — each provider's Chroma collection is shared across everyone using the app, fine for a local demo.
+- Local CPU inference is slower than a hosted API (tens of seconds per answer on a laptop CPU with `llama3.2`), and a 3B model follows instructions (always grounding in retrieved context when it's given) less consistently than a larger hosted model - occasionally it answers from general knowledge even when relevant context was retrieved, or vice versa. Swap in a larger/GPU-accelerated model (`OLLAMA_CHAT_MODEL`) if quality matters more than zero-cost local dev.
 - `nomic-embed-text` separates topics less sharply than a hosted embedding model - the relevance cutoff in `src/lib/retrieval.ts` is tuned accordingly, and meta-questions about the assistant itself ("what do you do?") are matched by a small keyword pattern rather than relying on embedding similarity alone, since the two weren't reliably distinguishable by distance score with this model.
 - Retrieval only embeds the current message, not the full conversation - conversation history is passed to the model for generation (so "yes"/"tell me more" work), but a follow-up that depends on earlier context for the *knowledge-base search itself* (e.g. "and how do I irrigate it?" three turns after mentioning wheat) may not retrieve the right chunks. History is also capped to the last 8 non-empty messages client-side, to keep prompts short for local CPU inference.
 - `data/registry.json` and `data/kb-status.json` are flat files, not a database — fine for a single-user local demo.
