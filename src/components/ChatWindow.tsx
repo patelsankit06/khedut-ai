@@ -176,6 +176,10 @@ export function ChatWindow({ crop, provider }: { crop: CropId | null; provider: 
     setMessages([]);
   }
 
+  function handleDeleteMessage(index: number) {
+    setMessages((prev) => prev.filter((_, i) => i !== index));
+  }
+
   return (
     <div className="flex h-full flex-col">
       {messages.length > 0 && (
@@ -201,7 +205,12 @@ export function ChatWindow({ crop, provider }: { crop: CropId | null; provider: 
           </p>
         )}
         {messages.map((message, index) => (
-          <MessageBubble key={index} message={message} />
+          <MessageBubble
+            key={index}
+            message={message}
+            deletable={!isSending}
+            onDelete={() => handleDeleteMessage(index)}
+          />
         ))}
         <div ref={bottomRef} />
       </div>
