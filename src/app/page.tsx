@@ -133,7 +133,7 @@ export default function Home() {
             href="https://patelsankit2.vercel.app/"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium text-emerald-700 hover:underline dark:text-emerald-400"
+            className="font-medium text-purple-700 hover:underline dark:text-purple-400"
           >
             Patelsankit Portfolio
           </a>
