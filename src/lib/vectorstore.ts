@@ -1,6 +1,6 @@
 import { ChromaClient, CloudClient } from "chromadb";
 import { Chroma } from "@langchain/community/vectorstores/chroma";
-import { getConfig, collectionNameFor, type AppConfig, type LlmProvider } from "@/lib/config";
+import { getConfig, collectionNameFor, type LlmProvider } from "@/lib/config";
 import { AppError } from "@/lib/errors";
 import { OllamaEmbeddings } from "@/lib/ollama/embeddings";
 import { GeminiEmbeddings } from "@/lib/gemini/embeddings";
@@ -55,18 +55,6 @@ function requireGeminiApiKey(): string {
   return apiKey;
 }
 
-// Same Chroma Cloud vs. self-hosted branch as getChromaClient() above, but
-// expressed as constructor args for @langchain/community's Chroma wrapper
-// (which builds its own ChromaClient internally rather than accepting one).
-function chromaConnectionArgs(config: AppConfig) {
-  return config.chromaApiKey
-    ? {
-        chromaCloudAPIKey: config.chromaApiKey,
-        clientParams: { tenant: config.chromaTenant, database: config.chromaDatabase },
-      }
-    : { url: config.chromaUrl };
-}
-
 // Ollama's embedding model is symmetric (no separate query/document taskType
 // like Gemini's), so ingest and query share one instance/store per provider
 // for Ollama, but Gemini needs two differently-configured embeddings
@@ -83,7 +71,13 @@ export function getIngestStore(provider: LlmProvider): Chroma {
       provider === "gemini"
         ? new GeminiEmbeddings({ apiKey: requireGeminiApiKey(), model: config.geminiEmbeddingModel, taskType: "RETRIEVAL_DOCUMENT" })
         : new OllamaEmbeddings({ baseUrl: config.ollamaUrl, model: config.ollamaEmbeddingModel });
-    store = new Chroma(embeddings, { ...chromaConnectionArgs(config), collectionName: collectionNameFor(config, provider) });
+    // Pass our own already-correct client (index) rather than re-deriving
+    // connection args - @langchain/community's Chroma wrapper only uses its
+    // `chromaCloudAPIKey`/`clientParams` options to add an auth header, then
+    // still builds its own plain ChromaClient({path: this.url}), silently
+    // defaulting to localhost:8000 when no `url` is given. Passing `index`
+    // bypasses that entirely.
+    store = new Chroma(embeddings, { index: getChromaClient(), collectionName: collectionNameFor(config, provider) });
     ingestStores.set(provider, store);
   }
   return store;
@@ -97,7 +91,7 @@ export function getQueryStore(provider: LlmProvider): Chroma {
       provider === "gemini"
         ? new GeminiEmbeddings({ apiKey: requireGeminiApiKey(), model: config.geminiEmbeddingModel, taskType: "RETRIEVAL_QUERY" })
         : new OllamaEmbeddings({ baseUrl: config.ollamaUrl, model: config.ollamaEmbeddingModel });
-    store = new Chroma(embeddings, { ...chromaConnectionArgs(config), collectionName: collectionNameFor(config, provider) });
+    store = new Chroma(embeddings, { index: getChromaClient(), collectionName: collectionNameFor(config, provider) });
     queryStores.set(provider, store);
   }
   return store;
