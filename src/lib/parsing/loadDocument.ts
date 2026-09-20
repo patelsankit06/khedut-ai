@@ -1,5 +1,5 @@
 import { Document } from "@langchain/core/documents";
-import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
+import { PDFParse } from "pdf-parse";
 import { DocxLoader } from "@langchain/community/document_loaders/fs/docx";
 import { TextLoader } from "@langchain/classic/document_loaders/fs/text";
 import { AppError } from "@/lib/errors";
@@ -18,9 +18,24 @@ export async function loadDocument(file: File, originalFilename: string): Promis
 
   let docs: Document[];
   switch (extension) {
-    case "pdf":
-      docs = await new PDFLoader(file).load();
+    case "pdf": {
+      // Calling pdf-parse's v2 API directly (statically imported above)
+      // rather than going through @langchain/community's PDFLoader, which
+      // resolves pdf-parse via a dynamic import() with a version-fallback
+      // dance for a legacy v1 build path that doesn't exist in the v2 we
+      // have installed. That dynamic resolution works locally (full
+      // node_modules on disk) but silently fails on Vercel, where only
+      // statically-imported files are reliably included in the deployed
+      // function - see the "PDF uploads failing on Vercel" fix history.
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const parser = new PDFParse({ data: buffer });
+      const result = await parser.getText();
+      await parser.destroy();
+      docs = result.pages.map(
+        (page) => new Document({ pageContent: page.text, metadata: { loc: { pageNumber: page.num } } })
+      );
       break;
+    }
     case "docx":
       docs = await new DocxLoader(file, { type: "docx" }).load();
       break;

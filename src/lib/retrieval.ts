@@ -50,6 +50,19 @@ const MAX_RELEVANT_DISTANCE: Record<LlmProvider, number> = {
 const META_QUESTION_PATTERN =
   /\b(what (do|can|)\s*you do|who are you|what are you|what is khedut|about khedut|your capabilit|what can i ask|what.*questions.*(can i )?ask|how (do|can) i use (this|you|khedut)|introduce yourself|what.*(this (app|bot|chatbot|assistant)))\b/i;
 
+// Same problem as meta-questions, different trigger: asking about an
+// uploaded file ("what's in the pdf I just uploaded?") has no farming
+// content of its own to match against semantically, so it can score worse
+// than the actual uploaded document and fall through to general chat -
+// which then has nothing real to say and may hallucinate from unrelated
+// conversation history (observed: claimed an uploaded cotton PDF was about
+// pomegranate, because pomegranate was discussed earlier in the chat).
+// Bypasses the same way: search crop:"general" (where uploads live)
+// without the relevance threshold, so the real uploaded content - which
+// should still out-rank the About doc for anything document-shaped - wins.
+const UPLOADED_DOC_QUESTION_PATTERN =
+  /\b(pdf|document|file)s?\b.*\b(contain|inside|about|say|receive|attach)|\b(receive|got|upload(ed)?)\b.*\b(pdf|document|file)s?\b/i;
+
 // Chunks are always tagged with a `crop` (a specific crop, or "general" for
 // documents uploaded without a crop). Filtering by a selected crop still
 // includes "general" chunks so uploaded reference material stays searchable
@@ -61,7 +74,9 @@ function buildCropFilter(crop?: string): CropFilter | undefined {
 
 export async function retrieve(question: string, crop: string | undefined, provider: LlmProvider): Promise<RetrievalResult> {
   const isMetaQuestion = META_QUESTION_PATTERN.test(question);
-  const filter: CropFilter | undefined = isMetaQuestion ? { crop: "general" } : buildCropFilter(crop);
+  const isDocumentQuestion = UPLOADED_DOC_QUESTION_PATTERN.test(question);
+  const bypassThreshold = isMetaQuestion || isDocumentQuestion;
+  const filter: CropFilter | undefined = bypassThreshold ? { crop: "general" } : buildCropFilter(crop);
 
   let rawResults: [Document, number][];
   try {
@@ -71,7 +86,7 @@ export async function retrieve(question: string, crop: string | undefined, provi
   }
 
   const maxDistance = MAX_RELEVANT_DISTANCE[provider];
-  const results = isMetaQuestion ? rawResults : rawResults.filter(([, score]) => score <= maxDistance);
+  const results = bypassThreshold ? rawResults : rawResults.filter(([, score]) => score <= maxDistance);
 
   const citations: Citation[] = results.map(([doc, score], index) => ({
     n: index + 1,
