@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { UploadPanel } from "@/components/UploadPanel";
+// Additional Documents (PDF/DOCX/TXT/Markdown upload) is disabled for now -
+// PDF parsing is unreliable on Vercel (multiple libraries/approaches tried,
+// see git history on src/lib/parsing/loadDocument.ts). Re-enable by restoring
+// this import and the <UploadPanel> block below once that's sorted out.
+// import { UploadPanel } from "@/components/UploadPanel";
 import { ChatWindow } from "@/components/ChatWindow";
 import { CropSelector } from "@/components/CropSelector";
 import { KnowledgeBasePanel } from "@/components/KnowledgeBasePanel";
@@ -138,9 +142,10 @@ export default function Home() {
               instead of clearing that state imperatively in an effect. */}
           <KnowledgeBasePanel key={provider} provider={provider} />
           <CropSelector selected={crop} onSelect={handleSelectCrop} />
-          <div className="min-h-0 flex-1 overflow-hidden">
+          {/* Additional Documents upload disabled for now - see import comment above. */}
+          {/* <div className="min-h-0 flex-1 overflow-hidden">
             <UploadPanel provider={provider} />
-          </div>
+          </div> */}
         </aside>
         <section className="flex flex-col overflow-hidden">
           <ChatWindow crop={crop} provider={provider} />
