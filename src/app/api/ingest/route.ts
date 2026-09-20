@@ -10,6 +10,9 @@ import { addDocument } from "@/lib/documentRegistry";
 import { saveDocumentContent } from "@/lib/documentContent";
 
 export const runtime = "nodejs";
+// Embedding a large uploaded document can take a while - raise the cap past
+// Vercel's 10s default. Actual max is plan-dependent (Hobby vs Pro).
+export const maxDuration = 60;
 
 const providerSchema = z.enum(["ollama", "gemini"]);
 

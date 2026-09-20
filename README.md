@@ -93,10 +93,44 @@ All in `.env.local`:
 | `GEMINI_API_KEY` | — | optional; enables the Gemini toggle option when set |
 | `GEMINI_CHAT_MODEL` | `gemini-flash-latest` | rolling alias to Google's current free-tier flash model; pin a dated id for reproducible answers |
 | `GEMINI_EMBEDDING_MODEL` | `gemini-embedding-001` | |
-| `CHROMA_URL` | `http://localhost:8000` | |
+| `CHROMA_URL` | `http://localhost:8000` | ignored if `CHROMA_API_KEY` is set (Chroma Cloud mode) |
 | `CHROMA_COLLECTION_OLLAMA` | `khedut_chunks_ollama` | Ollama's collection - also seeded/queried by uploads made while Ollama is selected |
 | `CHROMA_COLLECTION_GEMINI` | `khedut_chunks_gemini` | Gemini's collection, separate because its embeddings aren't compatible with Ollama's |
+| `CHROMA_API_KEY` | — | optional; switches to [Chroma Cloud](https://www.trychroma.com/) instead of `CHROMA_URL` - see "Deploying to Vercel" below |
+| `CHROMA_TENANT` | — | Chroma Cloud only |
+| `CHROMA_DATABASE` | — | Chroma Cloud only |
 | `MAX_UPLOAD_MB` | `20` | |
+
+## Deploying to Vercel
+
+The Next.js app deploys to Vercel like any other Next.js project, but two of this app's dependencies can't run *on* Vercel itself:
+
+- **Ollama** is a persistent local server process - Vercel only runs stateless serverless functions, so it's unreachable there. This doesn't require removing Ollama from the code; it just can't be the *deployed* app's provider. Keep using Ollama locally (`LLM_PROVIDER=ollama` in `.env.local`, untouched) and use Gemini for the deployed version instead - both are already fully supported side by side.
+- **Chroma** normally runs as a local Docker container, which Vercel also can't host. It needs to live somewhere reachable over the internet instead.
+
+### 1. Set these environment variables in the Vercel project (Project Settings → Environment Variables, not `.env.local` - that file is git-ignored and never gets deployed)
+
+| Variable | Value |
+|---|---|
+| `LLM_PROVIDER` | `gemini` |
+| `GEMINI_API_KEY` | your key from [Google AI Studio](https://aistudio.google.com/apikey) |
+| `CHROMA_API_KEY`, `CHROMA_TENANT`, `CHROMA_DATABASE` | from your Chroma Cloud database (see step 2) - **or** `CHROMA_URL` if self-hosting Chroma instead |
+| `CHROMA_COLLECTION_GEMINI` | e.g. `khedut_chunks_gemini` (optional, this is the default) |
+
+Leave `OLLAMA_*` unset in Vercel - they're not used there. The sidebar's Ollama option will show disabled automatically once deployed, since the health check can never reach it.
+
+### 2. Get Chroma reachable from the internet - pick one
+
+- **Chroma Cloud** (easiest): sign up at [trychroma.com](https://www.trychroma.com/), create a database, and copy its API key/tenant/database into the Vercel env vars above. No `CHROMA_URL` needed - `CHROMA_API_KEY` being set is what switches the app into Chroma Cloud mode (see `src/lib/vectorstore.ts`).
+- **Self-host** on Railway/Render/Fly.io: deploy the same `chromadb/chroma` Docker image this repo's `docker-compose.yml` uses, with a persistent volume, then set `CHROMA_URL` to its public URL instead of the Chroma Cloud variables.
+
+### 3. Deploy, then seed
+
+After the first deploy, open the site and click **Load Knowledge Base** with **Gemini** selected in the sidebar (or `curl -X POST https://<your-app>.vercel.app/api/seed -H "Content-Type: application/json" -d '{"provider":"gemini"}'`) - Gemini's Chroma collection starts empty regardless of what's already seeded locally under Ollama.
+
+### Known limitation: uploads don't durably persist in production
+
+**Additional Documents** (`src/lib/documentRegistry.ts`, `documentContent.ts`) and the knowledge-base seed-status display (`src/lib/knowledgeBaseStatus.ts`) write small JSON files to local disk. Vercel's serverless filesystem is read-only except `/tmp`, so `src/lib/dataDir.ts` redirects these writes to `/tmp` when deployed there instead of throwing - but `/tmp` is ephemeral (wiped on cold start, not shared across instances), so an uploaded document's *listing* and the seed-status display may disappear or become inconsistent between requests in production, even though the actual embedded content in Chroma is unaffected. Fine for a demo; would need a real database (or Vercel Blob/KV) to fix properly for production use.
 
 ## Extending the knowledge base
 

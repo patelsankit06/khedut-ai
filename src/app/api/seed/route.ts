@@ -7,6 +7,9 @@ import { getIngestStore, toVectorStoreError } from "@/lib/vectorstore";
 import { readKnowledgeBaseStatus, writeKnowledgeBaseStatus } from "@/lib/knowledgeBaseStatus";
 
 export const runtime = "nodejs";
+// Embedding the whole knowledge base can take a while - raise the cap past
+// Vercel's 10s default. Actual max is plan-dependent (Hobby vs Pro).
+export const maxDuration = 60;
 
 const providerSchema = z.enum(["ollama", "gemini"]);
 

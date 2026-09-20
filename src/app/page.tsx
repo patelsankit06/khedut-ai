@@ -74,12 +74,16 @@ export default function Home() {
     };
   }, []);
 
-  // Gemini was selected (and persisted from a previous session) but the key
-  // has since been removed - fall back to Ollama instead of silently
-  // failing every request.
+  // The selected provider (possibly persisted from a previous session)
+  // turned out to be unusable but the other one isn't - fall back instead of
+  // silently failing every request. Doesn't fire when both are unusable
+  // (nothing better to switch to) or both are fine (nothing to do).
   useEffect(() => {
-    if (provider === "gemini" && health?.gemini === "missing_api_key") {
+    if (!health) return;
+    if (provider === "gemini" && health.gemini === "missing_api_key" && health.ollama === "reachable") {
       handleSelectProvider("ollama");
+    } else if (provider === "ollama" && health.ollama === "unreachable" && health.gemini === "configured") {
+      handleSelectProvider("gemini");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [health]);
@@ -108,6 +112,14 @@ export default function Home() {
 
   const modelOk = provider === "gemini" ? health?.gemini === "configured" : health?.ollama === "reachable";
 
+  const providerDisabledReasons: Partial<Record<LlmProvider, string>> = {};
+  if (health?.ollama === "unreachable") {
+    providerDisabledReasons.ollama = "Ollama isn't reachable - run 'ollama serve' locally to enable this.";
+  }
+  if (health?.gemini === "missing_api_key") {
+    providerDisabledReasons.gemini = "Add GEMINI_API_KEY to .env.local to enable this.";
+  }
+
   return (
     <div className="flex h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
       <header className="flex items-center justify-between border-b border-zinc-200 px-6 py-3 dark:border-zinc-800">
@@ -121,11 +133,7 @@ export default function Home() {
       </header>
       <div className="grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[280px_1fr]">
         <aside className="hidden flex-col overflow-hidden border-r border-zinc-200 md:flex dark:border-zinc-800">
-          <ProviderSelector
-            selected={provider}
-            onSelect={handleSelectProvider}
-            geminiConfigured={health?.gemini === "configured"}
-          />
+          <ProviderSelector selected={provider} onSelect={handleSelectProvider} disabledReasons={providerDisabledReasons} />
           {/* Remounts (fresh status/error state) whenever the provider changes,
               instead of clearing that state imperatively in an effect. */}
           <KnowledgeBasePanel key={provider} provider={provider} />

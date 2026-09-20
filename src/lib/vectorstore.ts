@@ -1,15 +1,22 @@
-import { ChromaClient } from "chromadb";
+import { ChromaClient, CloudClient } from "chromadb";
 import { Chroma } from "@langchain/community/vectorstores/chroma";
-import { getConfig, collectionNameFor, type LlmProvider } from "@/lib/config";
+import { getConfig, collectionNameFor, type AppConfig, type LlmProvider } from "@/lib/config";
 import { AppError } from "@/lib/errors";
 import { OllamaEmbeddings } from "@/lib/ollama/embeddings";
 import { GeminiEmbeddings } from "@/lib/gemini/embeddings";
 
 let chromaClient: ChromaClient | null = null;
 
+// Chroma Cloud (managed) is used whenever CHROMA_API_KEY is set - needed for
+// hosts like Vercel that can't run the self-hosted Docker container
+// themselves. Otherwise this is a self-hosted instance (local Docker, or any
+// remotely-reachable one) addressed by chromaUrl alone.
 function getChromaClient(): ChromaClient {
   if (!chromaClient) {
-    chromaClient = new ChromaClient({ path: getConfig().chromaUrl });
+    const config = getConfig();
+    chromaClient = config.chromaApiKey
+      ? new CloudClient({ apiKey: config.chromaApiKey, tenant: config.chromaTenant, database: config.chromaDatabase })
+      : new ChromaClient({ path: config.chromaUrl });
   }
   return chromaClient;
 }
@@ -48,6 +55,18 @@ function requireGeminiApiKey(): string {
   return apiKey;
 }
 
+// Same Chroma Cloud vs. self-hosted branch as getChromaClient() above, but
+// expressed as constructor args for @langchain/community's Chroma wrapper
+// (which builds its own ChromaClient internally rather than accepting one).
+function chromaConnectionArgs(config: AppConfig) {
+  return config.chromaApiKey
+    ? {
+        chromaCloudAPIKey: config.chromaApiKey,
+        clientParams: { tenant: config.chromaTenant, database: config.chromaDatabase },
+      }
+    : { url: config.chromaUrl };
+}
+
 // Ollama's embedding model is symmetric (no separate query/document taskType
 // like Gemini's), so ingest and query share one instance/store per provider
 // for Ollama, but Gemini needs two differently-configured embeddings
@@ -64,7 +83,7 @@ export function getIngestStore(provider: LlmProvider): Chroma {
       provider === "gemini"
         ? new GeminiEmbeddings({ apiKey: requireGeminiApiKey(), model: config.geminiEmbeddingModel, taskType: "RETRIEVAL_DOCUMENT" })
         : new OllamaEmbeddings({ baseUrl: config.ollamaUrl, model: config.ollamaEmbeddingModel });
-    store = new Chroma(embeddings, { url: config.chromaUrl, collectionName: collectionNameFor(config, provider) });
+    store = new Chroma(embeddings, { ...chromaConnectionArgs(config), collectionName: collectionNameFor(config, provider) });
     ingestStores.set(provider, store);
   }
   return store;
@@ -78,7 +97,7 @@ export function getQueryStore(provider: LlmProvider): Chroma {
       provider === "gemini"
         ? new GeminiEmbeddings({ apiKey: requireGeminiApiKey(), model: config.geminiEmbeddingModel, taskType: "RETRIEVAL_QUERY" })
         : new OllamaEmbeddings({ baseUrl: config.ollamaUrl, model: config.ollamaEmbeddingModel });
-    store = new Chroma(embeddings, { url: config.chromaUrl, collectionName: collectionNameFor(config, provider) });
+    store = new Chroma(embeddings, { ...chromaConnectionArgs(config), collectionName: collectionNameFor(config, provider) });
     queryStores.set(provider, store);
   }
   return store;
@@ -87,9 +106,11 @@ export function getQueryStore(provider: LlmProvider): Chroma {
 export function toVectorStoreError(error: unknown): AppError {
   if (error instanceof AppError) return error;
   const message = error instanceof Error ? error.message : String(error);
+  const config = getConfig();
+  const target = config.chromaApiKey ? "Chroma Cloud" : `the vector database at ${config.chromaUrl}`;
   return new AppError(
     "VECTOR_STORE_UNAVAILABLE",
-    `Could not reach the vector database at ${getConfig().chromaUrl}. Is 'docker compose up' (or 'docker-compose up') running? (${message})`,
+    `Could not reach ${target}. ${config.chromaApiKey ? "Check CHROMA_API_KEY/CHROMA_TENANT/CHROMA_DATABASE." : "Is 'docker compose up' (or 'docker-compose up') running?"} (${message})`,
     503
   );
 }

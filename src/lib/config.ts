@@ -14,7 +14,16 @@ export interface AppConfig {
   geminiChatModel: string;
   geminiEmbeddingModel: string;
 
+  // Self-hosted Chroma (local Docker, or any remotely-reachable instance -
+  // e.g. Railway/Render/Fly.io) is addressed by chromaUrl alone. Chroma
+  // Cloud (a managed option, useful since a serverless host like Vercel
+  // can't run the local Docker container itself) is used instead whenever
+  // chromaApiKey is set - see getChromaClient()/getVectorStore() in
+  // src/lib/vectorstore.ts for the branch.
   chromaUrl: string;
+  chromaApiKey?: string;
+  chromaTenant?: string;
+  chromaDatabase?: string;
   // Separate collections per provider: Ollama's and Gemini's embedding
   // models produce differently-sized vectors, so they can't share a Chroma
   // collection - switching providers means searching a different index,
@@ -53,6 +62,9 @@ export function getConfig(): AppConfig {
     geminiEmbeddingModel: process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001",
 
     chromaUrl: process.env.CHROMA_URL || "http://localhost:8000",
+    chromaApiKey: process.env.CHROMA_API_KEY || undefined,
+    chromaTenant: process.env.CHROMA_TENANT || undefined,
+    chromaDatabase: process.env.CHROMA_DATABASE || undefined,
     // CHROMA_COLLECTION is the old (pre-provider-toggle) variable name -
     // kept as a fallback so existing .env.local files and already-seeded
     // Ollama collections keep working without edits.

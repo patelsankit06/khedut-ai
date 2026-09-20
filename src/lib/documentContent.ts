@@ -1,7 +1,8 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { dataDir } from "@/lib/dataDir";
 
-const CONTENT_DIR = path.join(process.cwd(), "data", "documents");
+const CONTENT_DIR = path.join(dataDir(), "documents");
 
 function contentPath(id: string): string {
   return path.join(CONTENT_DIR, `${id}.txt`);

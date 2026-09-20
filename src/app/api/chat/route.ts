@@ -8,6 +8,9 @@ import { streamAnswer as streamGeminiAnswer } from "@/lib/gemini/chat";
 import type { ChatTurn } from "@/lib/chatTurn";
 
 export const runtime = "nodejs";
+// Streamed generation can run well past Vercel's 10s default - raise the cap.
+// Actual max is plan-dependent (Hobby vs Pro); lower this if your plan caps below 60.
+export const maxDuration = 60;
 
 const historyTurnSchema = z.object({
   role: z.enum(["user", "assistant"]),

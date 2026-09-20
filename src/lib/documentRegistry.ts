@@ -1,7 +1,8 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { dataDir } from "@/lib/dataDir";
 
-const REGISTRY_PATH = path.join(process.cwd(), "data", "registry.json");
+const REGISTRY_PATH = path.join(dataDir(), "registry.json");
 
 export interface DocumentRecord {
   id: string;

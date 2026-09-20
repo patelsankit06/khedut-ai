@@ -1,8 +1,9 @@
 import { promises as fs } from "fs";
 import path from "path";
 import type { LlmProvider } from "@/lib/config";
+import { dataDir } from "@/lib/dataDir";
 
-const STATUS_PATH = path.join(process.cwd(), "data", "kb-status.json");
+const STATUS_PATH = path.join(dataDir(), "kb-status.json");
 
 export interface KnowledgeBaseStatus {
   seededAt: string;
