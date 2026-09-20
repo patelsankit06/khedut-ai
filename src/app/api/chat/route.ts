@@ -61,12 +61,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let citations;
-  let contextBlock;
+  // A retrieval failure (Chroma unreachable/misconfigured) shouldn't block
+  // the whole chat - the app is a general chatbot with RAG as an
+  // enhancement, not a hard requirement, so fall back to context-free
+  // general chat instead of erroring out the entire request. Logged
+  // server-side so a persistently-unreachable vector store is still visible.
+  let citations: Awaited<ReturnType<typeof retrieve>>["citations"] = [];
+  let contextBlock = "";
   try {
     ({ citations, contextBlock } = await retrieve(question, crop, provider));
   } catch (error) {
-    return errorResponse(error);
+    console.error("Retrieval unavailable, falling back to context-free chat:", error);
   }
 
   const stream = new ReadableStream<Uint8Array>({
