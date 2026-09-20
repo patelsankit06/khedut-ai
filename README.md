@@ -29,34 +29,72 @@ Chat:    Question (+ selected crop + recent history) -> OllamaEmbeddings.embedQu
 
 ## Prerequisites
 
-- Node.js 20+
-- Docker (either the `docker compose` v2 plugin or the standalone `docker-compose` v1 binary)
-- [Ollama](https://ollama.com/download) installed and running locally (`ollama serve`, or it's already running as a background service on most installs). Standard install: `curl -fsSL https://ollama.com/install.sh | sh` (needs sudo). Without sudo, download the `ollama-linux-<arch>.tar.zst` asset from the [latest GitHub release](https://github.com/ollama/ollama/releases/latest), extract it anywhere (e.g. `~/.local/ollama`), and run `<extract-dir>/bin/ollama serve` - it stores models under `~/.ollama/models` either way.
-- Optional: a free Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey), only needed if you want the Gemini toggle option - Ollama alone is enough to run the app.
+- **Node.js** 20+
+- **Docker** and **Docker Compose** installed (either the `docker compose` v2 plugin or the standalone `docker-compose` v1 binary)
+- **Git** client (optional, but recommended)
+- **[Ollama](https://ollama.com/download)** installed - the app's local, offline AI provider. Standard install: `curl -fsSL https://ollama.com/install.sh | sh` (needs sudo). Without sudo, download the `ollama-linux-<arch>.tar.zst` asset from the [latest GitHub release](https://github.com/ollama/ollama/releases/latest), extract it anywhere (e.g. `~/.local/ollama`), and run `<extract-dir>/bin/ollama serve` from there instead - it stores models under `~/.ollama/models` either way.
+- Optional: a free **Gemini API key** from [Google AI Studio](https://aistudio.google.com/apikey), only needed for the Gemini toggle option - Ollama alone is enough to run the app.
 
-> **Restarting after a reboot:** in this environment Ollama was installed without root access (no systemd service), so it doesn't start automatically. After every reboot, start it manually before running the app:
-> ```bash
-> ~/.local/ollama/bin/ollama serve
-> ```
-> Leave it running in that terminal (or background it with `&`), then continue with Setup below. If you installed Ollama the standard way (`curl -fsSL https://ollama.com/install.sh | sh`) on a machine with sudo, it runs as a service and you can skip this.
+## Getting Started
 
-## Setup
+### 1. Clone the Repository (if not already)
 
 ```bash
-cp .env.local.example .env.local   # already done in this repo, defaults work as-is
-docker compose up -d               # or: docker-compose up -d
-ollama pull llama3.2                # chat model (~2GB)
-ollama pull nomic-embed-text         # embedding model (~270MB)
+git clone https://github.com/patelsankit06/khedut-ai.git
+cd khedut-ai
+```
+
+### 2. Install Dependencies
+
+```bash
 npm install
+```
+
+### 3. Configure Environment Variables
+
+```bash
+cp .env.local.example .env.local
+```
+
+The defaults work as-is for local, Ollama-only use. See [Configuration](#configuration) below to also enable Gemini and/or Chroma Cloud.
+
+### 4. Start Chroma via Docker Compose
+
+```bash
+docker compose up -d   # or: docker-compose up -d
+```
+
+This will:
+- Pull the Chroma image
+- Start the Chroma service exposed on port **8000**
+
+Confirm it's up: `curl http://localhost:8000/api/v2/heartbeat`.
+
+### 5. Start Ollama and Pull the Models
+
+```bash
+ollama serve &                        # skip if it's already running as a background service
+ollama pull llama3.2                  # chat model (~2GB)
+ollama pull nomic-embed-text          # embedding model (~270MB)
+```
+
+Confirm it's up: `curl http://localhost:11434/api/tags`.
+
+> **Restarting after a reboot:** in an environment where Ollama was installed without root access (no systemd service), it won't start automatically - run `ollama serve` (or `~/.local/ollama/bin/ollama serve` if installed that way) again after every reboot before starting the app. If installed the standard way on a machine with sudo, it runs as a service and this doesn't apply.
+>
+> CPU-only inference works fine for local development/demo purposes with these small models, just expect answers to stream noticeably slower than a hosted API. If you have more RAM/a GPU available, a larger chat model (e.g. `llama3.1:8b`) gives better answer quality - just update `OLLAMA_CHAT_MODEL` in `.env.local` after pulling it.
+
+### 6. Run the Development Server
+
+```bash
 npm run dev
 ```
 
-Confirm Chroma is up: `curl http://localhost:8000/api/v2/heartbeat`.
-Confirm Ollama is up: `curl http://localhost:11434/api/tags`.
+Open **http://localhost:3000**.
 
-CPU-only inference works fine for local development/demo purposes with these small models, just expect answers to stream noticeably slower than a hosted API. If you have more RAM/a GPU available, a larger chat model (e.g. `llama3.1:8b`) will give better answer quality — just update `OLLAMA_CHAT_MODEL` in `.env.local` after pulling it.
+### 7. Load the Knowledge Base
 
-Open http://localhost:3000, then click **Load Knowledge Base** in the sidebar to seed all 5 crop guides into Chroma for the currently-selected provider (can also be triggered directly: `curl -X POST http://localhost:3000/api/seed -H "Content-Type: application/json" -d '{"provider":"ollama"}'`). Re-run it any time after editing a file in `data/knowledge-base/`, or after switching providers for the first time, to (re-)seed.
+Click **Load Knowledge Base** in the sidebar to embed and store all 5 crop guides in Chroma, for the currently-selected provider (can also be triggered directly: `curl -X POST http://localhost:3000/api/seed -H "Content-Type: application/json" -d '{"provider":"ollama"}'`). Re-run it any time after editing a file in `data/knowledge-base/`, or after switching providers for the first time, to (re-)seed.
 
 ### Enabling Gemini
 
