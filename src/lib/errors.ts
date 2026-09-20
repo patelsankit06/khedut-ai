@@ -34,8 +34,12 @@ export function toErrorPayload(error: unknown): {
   }
 
   console.error(error);
+  // TEMP DIAGNOSTIC (round 2) - see git history for why: Vercel's runtime-log
+  // API is scope-restricted for this account, so this is the only way to see
+  // real errors from the deployed app. Revert once diagnosed.
+  const message = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ""}` : String(error);
   return {
-    body: { error: { code: "INTERNAL_ERROR", message: "Something went wrong." } },
+    body: { error: { code: "INTERNAL_ERROR", message: `Something went wrong. [DEBUG: ${message}]` } },
     status: 500,
   };
 }
