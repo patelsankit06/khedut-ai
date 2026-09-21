@@ -45,6 +45,9 @@ export default function Home() {
   // avoid a hydration mismatch.
   const [crop, setCrop] = useState<CropId | null>(null);
   const [provider, setProvider] = useState<LlmProvider>("ollama");
+  // The sidebar (provider/knowledge-base/crop controls) is a slide-in drawer
+  // on narrow screens, since there's no room for it next to the chat.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     // Deliberately loading external (browser-only) state after mount, not
@@ -56,6 +59,15 @@ export default function Home() {
     if (storedCrop) setCrop(storedCrop);
     if (storedProvider) setProvider(storedProvider);
   }, []);
+
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setSidebarOpen(false);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [sidebarOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -125,10 +137,22 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
-      <header className="flex items-center justify-between border-b border-zinc-200 px-6 py-3 dark:border-zinc-800">
-        <h1 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">🌱 Khedut AI</h1>
-        <div className="flex items-center gap-3 text-xs">
+    <div className="flex h-dvh flex-col bg-zinc-50 dark:bg-zinc-950">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 sm:px-6 dark:border-zinc-800">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+            className="-ml-1.5 rounded-md p-1.5 text-zinc-600 hover:bg-zinc-100 md:hidden dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+              <path d="M3 5.5A1 1 0 014 4.5h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
+            </svg>
+          </button>
+          <h1 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">🌱 Khedut AI</h1>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs sm:gap-3">
           <a
             href="https://patelsankit2.vercel.app/"
             target="_blank"
@@ -138,7 +162,7 @@ export default function Home() {
             Patelsankit Portfolio
           </a>
           {health && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <StatusPill label="Knowledge Base" ok={health.chroma === "reachable"} />
               <StatusPill label={provider === "gemini" ? "Gemini" : "Ollama"} ok={Boolean(modelOk)} />
             </div>
@@ -146,16 +170,40 @@ export default function Home() {
         </div>
       </header>
       <div className="grid flex-1 grid-cols-1 overflow-hidden md:grid-cols-[280px_1fr]">
-        <aside className="hidden flex-col overflow-hidden border-r border-zinc-200 md:flex dark:border-zinc-800">
-          <ProviderSelector selected={provider} onSelect={handleSelectProvider} disabledReasons={providerDisabledReasons} />
-          {/* Remounts (fresh status/error state) whenever the provider changes,
-              instead of clearing that state imperatively in an effect. */}
-          <KnowledgeBasePanel key={provider} provider={provider} />
-          <CropSelector selected={crop} onSelect={handleSelectCrop} />
-          {/* Additional Documents upload disabled for now - see import comment above. */}
-          {/* <div className="min-h-0 flex-1 overflow-hidden">
-            <UploadPanel provider={provider} />
-          </div> */}
+        {sidebarOpen && (
+          <div
+            aria-hidden="true"
+            onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          />
+        )}
+        <aside
+          className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col overflow-hidden bg-zinc-50 shadow-xl transition-transform duration-200 dark:bg-zinc-950 md:static md:z-auto md:w-auto md:max-w-none md:translate-x-0 md:border-r md:border-zinc-200 md:shadow-none md:dark:border-zinc-800 ${
+            sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 md:hidden dark:border-zinc-800">
+            <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Menu</span>
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(false)}
+              aria-label="Close menu"
+              className="rounded-full px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex flex-1 flex-col overflow-y-auto">
+            <ProviderSelector selected={provider} onSelect={handleSelectProvider} disabledReasons={providerDisabledReasons} />
+            {/* Remounts (fresh status/error state) whenever the provider changes,
+                instead of clearing that state imperatively in an effect. */}
+            <KnowledgeBasePanel key={provider} provider={provider} />
+            <CropSelector selected={crop} onSelect={handleSelectCrop} />
+            {/* Additional Documents upload disabled for now - see import comment above. */}
+            {/* <div className="min-h-0 flex-1 overflow-hidden">
+              <UploadPanel provider={provider} />
+            </div> */}
+          </div>
         </aside>
         <section className="flex flex-col overflow-hidden">
           <ChatWindow crop={crop} provider={provider} />
