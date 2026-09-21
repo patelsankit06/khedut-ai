@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import type { Citation } from "@/lib/retrieval";
 import type { CropId } from "@/lib/crops";
 import type { ChatTurn } from "@/lib/chatTurn";
@@ -34,7 +40,13 @@ function loadStoredMessages(): ChatMessage[] {
   }
 }
 
-export function ChatWindow({ crop, provider }: { crop: CropId | null; provider: LlmProvider }) {
+export function ChatWindow({
+  crop,
+  provider,
+}: {
+  crop: CropId | null;
+  provider: LlmProvider;
+}) {
   // Starts empty (matching what the server renders, since it has no
   // localStorage) and loads any stored conversation in an effect below -
   // reading localStorage during the initial render would make the client's
@@ -58,7 +70,12 @@ export function ChatWindow({ crop, provider }: { crop: CropId | null; provider: 
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     // Enter submits; Shift+Enter (or Ctrl/Cmd+Enter) inserts a newline instead.
-    if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey
+    ) {
       event.preventDefault();
       event.currentTarget.form?.requestSubmit();
     }
@@ -252,7 +269,7 @@ export function ChatWindow({ crop, provider }: { crop: CropId | null; provider: 
         <button
           type="submit"
           disabled={isSending || !question.trim()}
-          className="shrink-0 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white disabled:opacity-40 sm:px-10"
+          className="shrink-0 min-h-[52px] rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white disabled:opacity-40 sm:px-10"
         >
           Ask
         </button>
