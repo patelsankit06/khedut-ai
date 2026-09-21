@@ -1,6 +1,6 @@
 import { ChromaClient, CloudClient } from "chromadb";
 import { Chroma } from "@langchain/community/vectorstores/chroma";
-import { getConfig, collectionNameFor, type LlmProvider } from "@/lib/config";
+import { getConfig, collectionNameFor, embeddingProviderFor, type LlmProvider } from "@/lib/config";
 import { AppError } from "@/lib/errors";
 import { OllamaEmbeddings } from "@/lib/ollama/embeddings";
 import { GeminiEmbeddings } from "@/lib/gemini/embeddings";
@@ -43,6 +43,10 @@ export function isGeminiConfigured(): boolean {
   return Boolean(getConfig().geminiApiKey);
 }
 
+export function isGroqConfigured(): boolean {
+  return Boolean(getConfig().groqApiKey);
+}
+
 function requireGeminiApiKey(): string {
   const apiKey = getConfig().geminiApiKey;
   if (!apiKey) {
@@ -59,16 +63,19 @@ function requireGeminiApiKey(): string {
 // like Gemini's), so ingest and query share one instance/store per provider
 // for Ollama, but Gemini needs two differently-configured embeddings
 // instances (RETRIEVAL_DOCUMENT vs RETRIEVAL_QUERY) pointed at the same
-// collection - see src/lib/gemini/embeddings.ts.
-const ingestStores = new Map<LlmProvider, Chroma>();
-const queryStores = new Map<LlmProvider, Chroma>();
+// collection - see src/lib/gemini/embeddings.ts. Cached by *embedding*
+// provider (not LlmProvider) since Groq has no embeddings of its own and
+// shares Gemini's store entirely - see embeddingProviderFor() in config.ts.
+const ingestStores = new Map<string, Chroma>();
+const queryStores = new Map<string, Chroma>();
 
 export function getIngestStore(provider: LlmProvider): Chroma {
-  let store = ingestStores.get(provider);
+  const embeddingProvider = embeddingProviderFor(provider);
+  let store = ingestStores.get(embeddingProvider);
   if (!store) {
     const config = getConfig();
     const embeddings =
-      provider === "gemini"
+      embeddingProvider === "gemini"
         ? new GeminiEmbeddings({ apiKey: requireGeminiApiKey(), model: config.geminiEmbeddingModel, taskType: "RETRIEVAL_DOCUMENT" })
         : new OllamaEmbeddings({ baseUrl: config.ollamaUrl, model: config.ollamaEmbeddingModel });
     // Pass our own already-correct client (index) rather than re-deriving
@@ -78,21 +85,22 @@ export function getIngestStore(provider: LlmProvider): Chroma {
     // defaulting to localhost:8000 when no `url` is given. Passing `index`
     // bypasses that entirely.
     store = new Chroma(embeddings, { index: getChromaClient(), collectionName: collectionNameFor(config, provider) });
-    ingestStores.set(provider, store);
+    ingestStores.set(embeddingProvider, store);
   }
   return store;
 }
 
 export function getQueryStore(provider: LlmProvider): Chroma {
-  let store = queryStores.get(provider);
+  const embeddingProvider = embeddingProviderFor(provider);
+  let store = queryStores.get(embeddingProvider);
   if (!store) {
     const config = getConfig();
     const embeddings =
-      provider === "gemini"
+      embeddingProvider === "gemini"
         ? new GeminiEmbeddings({ apiKey: requireGeminiApiKey(), model: config.geminiEmbeddingModel, taskType: "RETRIEVAL_QUERY" })
         : new OllamaEmbeddings({ baseUrl: config.ollamaUrl, model: config.ollamaEmbeddingModel });
     store = new Chroma(embeddings, { index: getChromaClient(), collectionName: collectionNameFor(config, provider) });
-    queryStores.set(provider, store);
+    queryStores.set(embeddingProvider, store);
   }
   return store;
 }

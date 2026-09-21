@@ -1,4 +1,8 @@
-export type LlmProvider = "ollama" | "gemini";
+export type LlmProvider = "ollama" | "gemini" | "groq";
+
+// Groq has no embeddings API (chat/completion only) - see the comment on
+// embeddingProviderFor() below for how "groq" is handled for retrieval.
+export type EmbeddingProvider = "ollama" | "gemini";
 
 export interface AppConfig {
   llmProvider: LlmProvider;
@@ -14,6 +18,12 @@ export interface AppConfig {
   geminiChatModel: string;
   geminiEmbeddingModel: string;
 
+  // Groq: chat generation only (no embeddings - see EmbeddingProvider above).
+  // A fast, generous-free-tier alternative for when Gemini's chat quota is
+  // exhausted; retrieval still goes through Gemini's embeddings/collection.
+  groqApiKey?: string;
+  groqChatModel: string;
+
   // Self-hosted Chroma (local Docker, or any remotely-reachable instance -
   // e.g. Railway/Render/Fly.io) is addressed by chromaUrl alone. Chroma
   // Cloud (a managed option, useful since a serverless host like Vercel
@@ -24,10 +34,10 @@ export interface AppConfig {
   chromaApiKey?: string;
   chromaTenant?: string;
   chromaDatabase?: string;
-  // Separate collections per provider: Ollama's and Gemini's embedding
-  // models produce differently-sized vectors, so they can't share a Chroma
-  // collection - switching providers means searching a different index,
-  // seeded separately.
+  // One collection per *embedding* provider (not per LlmProvider): Ollama's
+  // and Gemini's embedding models produce differently-sized vectors, so they
+  // can't share a Chroma collection. Groq has no embedding model of its own,
+  // so it shares Gemini's - see embeddingProviderFor().
   chromaCollectionOllama: string;
   chromaCollectionGemini: string;
   maxUploadBytes: number;
@@ -36,15 +46,26 @@ export interface AppConfig {
 let cached: AppConfig | null = null;
 
 function normalizeProvider(value: string | undefined): LlmProvider {
-  return value === "gemini" ? "gemini" : "ollama";
+  if (value === "gemini" || value === "groq") return value;
+  return "ollama";
+}
+
+// Groq doesn't offer an embeddings API, so it can't have its own Chroma
+// collection - it piggybacks on Gemini's (same collection, same embedding
+// model) for retrieval, while using its own model for chat generation. This
+// keeps Groq usable as a drop-in swap for Gemini's *chat* quota specifically
+// (the thing that actually runs out first on a free tier) without needing a
+// separate index to seed and maintain.
+export function embeddingProviderFor(provider: LlmProvider): EmbeddingProvider {
+  return provider === "ollama" ? "ollama" : "gemini";
 }
 
 export function collectionNameFor(config: AppConfig, provider: LlmProvider): string {
-  return provider === "gemini" ? config.chromaCollectionGemini : config.chromaCollectionOllama;
+  return embeddingProviderFor(provider) === "gemini" ? config.chromaCollectionGemini : config.chromaCollectionOllama;
 }
 
 // No API key required up front - Ollama runs locally with nothing to
-// validate, and Gemini's key (if used) is only checked when a request
+// validate, and Gemini/Groq's keys (if used) are only checked when a request
 // actually selects that provider. Still lazy (not at module load) for
 // consistency with how routes are inspected during `next build`.
 export function getConfig(): AppConfig {
@@ -60,6 +81,9 @@ export function getConfig(): AppConfig {
     geminiApiKey: process.env.GEMINI_API_KEY || undefined,
     geminiChatModel: process.env.GEMINI_CHAT_MODEL || "gemini-flash-latest",
     geminiEmbeddingModel: process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001",
+
+    groqApiKey: process.env.GROQ_API_KEY || undefined,
+    groqChatModel: process.env.GROQ_CHAT_MODEL || "openai/gpt-oss-120b",
 
     chromaUrl: process.env.CHROMA_URL || "http://localhost:8000",
     chromaApiKey: process.env.CHROMA_API_KEY || undefined,

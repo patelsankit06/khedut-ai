@@ -17,6 +17,7 @@ interface HealthState {
   chroma: "reachable" | "unreachable";
   ollama: "reachable" | "unreachable";
   gemini: "configured" | "missing_api_key";
+  groq: "configured" | "missing_api_key";
 }
 
 const CROP_STORAGE_KEY = "khedut-ai:crop";
@@ -29,7 +30,7 @@ function loadStoredCrop(): CropId | null {
 }
 
 function isLlmProvider(value: string): value is LlmProvider {
-  return value === "ollama" || value === "gemini";
+  return value === "ollama" || value === "gemini" || value === "groq";
 }
 
 function loadStoredProvider(): LlmProvider | null {
@@ -78,7 +79,8 @@ export default function Home() {
         const data = (await response.json()) as HealthState;
         if (!cancelled) setHealth(data);
       } catch {
-        if (!cancelled) setHealth({ chroma: "unreachable", ollama: "unreachable", gemini: "missing_api_key" });
+        if (!cancelled)
+          setHealth({ chroma: "unreachable", ollama: "unreachable", gemini: "missing_api_key", groq: "missing_api_key" });
       }
     }
 
@@ -91,16 +93,19 @@ export default function Home() {
   }, []);
 
   // The selected provider (possibly persisted from a previous session)
-  // turned out to be unusable but the other one isn't - fall back instead of
-  // silently failing every request. Doesn't fire when both are unusable
-  // (nothing better to switch to) or both are fine (nothing to do).
+  // turned out to be unusable - fall back to the first usable one instead of
+  // silently failing every request. Doesn't fire when the current selection
+  // is fine, or when nothing else is usable either.
   useEffect(() => {
     if (!health) return;
-    if (provider === "gemini" && health.gemini === "missing_api_key" && health.ollama === "reachable") {
-      handleSelectProvider("ollama");
-    } else if (provider === "ollama" && health.ollama === "unreachable" && health.gemini === "configured") {
-      handleSelectProvider("gemini");
-    }
+    const isUsable: Record<LlmProvider, boolean> = {
+      ollama: health.ollama === "reachable",
+      gemini: health.gemini === "configured",
+      groq: health.groq === "configured",
+    };
+    if (isUsable[provider]) return;
+    const fallback = (["gemini", "groq", "ollama"] as const).find((candidate) => isUsable[candidate]);
+    if (fallback) handleSelectProvider(fallback);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [health]);
 
@@ -126,7 +131,12 @@ export default function Home() {
     }
   }
 
-  const modelOk = provider === "gemini" ? health?.gemini === "configured" : health?.ollama === "reachable";
+  const modelOk =
+    provider === "gemini"
+      ? health?.gemini === "configured"
+      : provider === "groq"
+        ? health?.groq === "configured"
+        : health?.ollama === "reachable";
 
   const providerDisabledReasons: Partial<Record<LlmProvider, string>> = {};
   if (health?.ollama === "unreachable") {
@@ -134,6 +144,9 @@ export default function Home() {
   }
   if (health?.gemini === "missing_api_key") {
     providerDisabledReasons.gemini = "Add GEMINI_API_KEY to .env.local to enable this.";
+  }
+  if (health?.groq === "missing_api_key") {
+    providerDisabledReasons.groq = "Add GROQ_API_KEY to .env.local to enable this.";
   }
 
   return (
@@ -164,7 +177,10 @@ export default function Home() {
           {health && (
             <div className="flex flex-wrap gap-2">
               <StatusPill label="Knowledge Base" ok={health.chroma === "reachable"} />
-              <StatusPill label={provider === "gemini" ? "Gemini" : "Ollama"} ok={Boolean(modelOk)} />
+              <StatusPill
+                label={provider === "gemini" ? "Gemini" : provider === "groq" ? "Groq" : "Ollama"}
+                ok={Boolean(modelOk)}
+              />
             </div>
           )}
         </div>

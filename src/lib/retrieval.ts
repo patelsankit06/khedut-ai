@@ -1,6 +1,6 @@
 import { Document } from "@langchain/core/documents";
 import type { Chroma } from "@langchain/community/vectorstores/chroma";
-import type { LlmProvider } from "@/lib/config";
+import { embeddingProviderFor, type LlmProvider, type EmbeddingProvider } from "@/lib/config";
 import { getQueryStore, toVectorStoreError } from "@/lib/vectorstore";
 
 type CropFilter = Chroma["FilterType"];
@@ -32,7 +32,7 @@ const TOP_K = 4;
 // (hosted, larger) separates more sharply than nomic-embed-text (local/small)
 // - on-topic well under 0.65, off-topic 0.82+. Re-calibrate a provider's
 // entry if its embedding model changes.
-const MAX_RELEVANT_DISTANCE: Record<LlmProvider, number> = {
+const MAX_RELEVANT_DISTANCE: Record<EmbeddingProvider, number> = {
   ollama: 1.0,
   gemini: 0.8,
 };
@@ -85,7 +85,7 @@ export async function retrieve(question: string, crop: string | undefined, provi
     throw toVectorStoreError(error);
   }
 
-  const maxDistance = MAX_RELEVANT_DISTANCE[provider];
+  const maxDistance = MAX_RELEVANT_DISTANCE[embeddingProviderFor(provider)];
   const results = bypassThreshold ? rawResults : rawResults.filter(([, score]) => score <= maxDistance);
 
   const citations: Citation[] = results.map(([doc, score], index) => ({

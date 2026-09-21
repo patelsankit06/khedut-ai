@@ -5,6 +5,7 @@ import { AppError, toErrorPayload } from "@/lib/errors";
 import { retrieve, buildPrompt, SYSTEM_INSTRUCTION } from "@/lib/retrieval";
 import { streamAnswer as streamOllamaAnswer } from "@/lib/ollama/chat";
 import { streamAnswer as streamGeminiAnswer } from "@/lib/gemini/chat";
+import { streamAnswer as streamGroqAnswer } from "@/lib/groq/chat";
 import type { ChatTurn } from "@/lib/chatTurn";
 
 export const runtime = "nodejs";
@@ -23,7 +24,7 @@ const requestSchema = z.object({
   // Overrides the server's default provider (LLM_PROVIDER in .env.local)
   // for this request - lets the sidebar toggle switch models per session
   // without a server restart.
-  provider: z.enum(["ollama", "gemini"]).optional(),
+  provider: z.enum(["ollama", "gemini", "groq"]).optional(),
   // Recent prior turns, oldest first - lets the model resolve follow-ups
   // ("yes", "tell me more") instead of every question being answered in
   // isolation. Capped client-side; capped again here defensively.
@@ -60,6 +61,11 @@ export async function POST(request: NextRequest) {
       new AppError("MODEL_UNAVAILABLE", "GEMINI_API_KEY is not set. Add it to .env.local to use Gemini.", 503)
     );
   }
+  if (provider === "groq" && !config.groqApiKey) {
+    return errorResponse(
+      new AppError("MODEL_UNAVAILABLE", "GROQ_API_KEY is not set. Add it to .env.local to use Groq.", 503)
+    );
+  }
 
   // A retrieval failure (Chroma unreachable/misconfigured) shouldn't block
   // the whole chat - the app is a general chatbot with RAG as an
@@ -90,12 +96,19 @@ export async function POST(request: NextRequest) {
                 systemInstruction: SYSTEM_INSTRUCTION,
                 messages,
               })
-            : streamOllamaAnswer({
-                baseUrl: config.ollamaUrl,
-                model: config.ollamaChatModel,
-                systemInstruction: SYSTEM_INSTRUCTION,
-                messages,
-              });
+            : provider === "groq"
+              ? streamGroqAnswer({
+                  apiKey: config.groqApiKey!,
+                  model: config.groqChatModel,
+                  systemInstruction: SYSTEM_INSTRUCTION,
+                  messages,
+                })
+              : streamOllamaAnswer({
+                  baseUrl: config.ollamaUrl,
+                  model: config.ollamaChatModel,
+                  systemInstruction: SYSTEM_INSTRUCTION,
+                  messages,
+                });
 
         for await (const textChunk of tokens) {
           controller.enqueue(encodeLine({ type: "token", data: textChunk }));
