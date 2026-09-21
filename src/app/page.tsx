@@ -45,7 +45,7 @@ export default function Home() {
   // localStorage there) and load any stored value in an effect below, to
   // avoid a hydration mismatch.
   const [crop, setCrop] = useState<CropId | null>(null);
-  const [provider, setProvider] = useState<LlmProvider>("ollama");
+  const [provider, setProvider] = useState<LlmProvider>("groq");
   // The sidebar (provider/knowledge-base/crop controls) is a slide-in drawer
   // on narrow screens, since there's no room for it next to the chat.
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -104,7 +104,7 @@ export default function Home() {
       groq: health.groq === "configured",
     };
     if (isUsable[provider]) return;
-    const fallback = (["gemini", "groq", "ollama"] as const).find((candidate) => isUsable[candidate]);
+    const fallback = (["groq", "gemini", "ollama"] as const).find((candidate) => isUsable[candidate]);
     if (fallback) handleSelectProvider(fallback);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [health]);
