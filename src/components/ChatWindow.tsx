@@ -245,7 +245,7 @@ export function ChatWindow({ crop, provider }: { crop: CropId | null; provider: 
             crop ? `Ask about ${crop}...` : "Ask a farming question..."
           }
           rows={1}
-          className="min-w-0 flex-1 resize-none overflow-y-auto rounded-lg border border-zinc-400 bg-white px-3 py-3 text-sm text-zinc-900 outline-none focus:border-indigo-500 sm:px-4 sm:py-4 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+          className="no-scrollbar min-w-0 flex-1 resize-none overflow-y-auto rounded-lg border border-zinc-400 bg-white px-3 py-3 text-sm text-zinc-900 outline-none focus:border-indigo-500 sm:px-4 sm:py-4 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
           disabled={isSending}
           autoFocus
         />
