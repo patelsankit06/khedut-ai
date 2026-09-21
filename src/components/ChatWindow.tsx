@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { Citation } from "@/lib/retrieval";
 import type { CropId } from "@/lib/crops";
 import type { ChatTurn } from "@/lib/chatTurn";
@@ -45,6 +45,24 @@ export function ChatWindow({ crop, provider }: { crop: CropId | null; provider: 
   const [question, setQuestion] = useState("");
   const [isSending, setIsSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Grows the textarea with its content up to a cap, then scrolls internally -
+  // native textareas don't do this on their own.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [question]);
+
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // Enter submits; Shift+Enter (or Ctrl/Cmd+Enter) inserts a newline instead.
+    if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      event.currentTarget.form?.requestSubmit();
+    }
+  }
 
   useEffect(() => {
     // Deliberately loading external (browser-only) state after mount, not
@@ -216,15 +234,18 @@ export function ChatWindow({ crop, provider }: { crop: CropId | null; provider: 
       </div>
       <form
         onSubmit={handleSubmit}
-        className="flex gap-2 border-t border-zinc-200 p-3 sm:p-4 dark:border-zinc-800"
+        className="flex items-end gap-2 border-t border-zinc-200 p-3 sm:p-4 dark:border-zinc-800"
       >
-        <input
+        <textarea
+          ref={textareaRef}
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder={
             crop ? `Ask about ${crop}...` : "Ask a farming question..."
           }
-          className="min-w-0 flex-1 rounded-lg border border-zinc-400 bg-white px-3 py-3 text-sm text-zinc-900 outline-none focus:border-indigo-500 sm:px-4 sm:py-4 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+          rows={1}
+          className="min-w-0 flex-1 resize-none overflow-y-auto rounded-lg border border-zinc-400 bg-white px-3 py-3 text-sm text-zinc-900 outline-none focus:border-indigo-500 sm:px-4 sm:py-4 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
           disabled={isSending}
           autoFocus
         />
