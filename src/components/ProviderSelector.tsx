@@ -10,25 +10,37 @@ interface ProviderSelectorProps {
   // the button can be disabled with an explanatory tooltip instead of
   // letting the user pick an option that will just fail on every message.
   disabledReasons: Partial<Record<LlmProvider, string>>;
+  // Ollama is a persistent local process - unreachable by definition on a
+  // serverless host like Vercel, so its option is hidden entirely there
+  // (rather than just shown disabled) instead of dead weight in the UI.
+  // `undefined` (health not loaded yet) is treated as supported so the
+  // button doesn't flash in and out on first render.
+  showOllama?: boolean;
 }
 
-const OPTIONS: { id: LlmProvider; label: string; sub: string; emoji: string }[] = [
+const ALL_OPTIONS: { id: LlmProvider; label: string; sub: string; emoji: string }[] = [
   { id: "ollama", label: "Ollama", sub: "Offline", emoji: "🖥️" },
   { id: "gemini", label: "Gemini", sub: "Online", emoji: "☁️" },
   { id: "groq", label: "Groq", sub: "Fast", emoji: "⚡" },
 ];
 
-export function ProviderSelector({ selected, onSelect, disabledReasons }: ProviderSelectorProps) {
-  const reasons = Object.values(disabledReasons).filter((reason): reason is string => Boolean(reason));
+export function ProviderSelector({ selected, onSelect, disabledReasons, showOllama = true }: ProviderSelectorProps) {
+  const options = showOllama ? ALL_OPTIONS : ALL_OPTIONS.filter((option) => option.id !== "ollama");
+  const reasons = Object.entries(disabledReasons)
+    .filter(([id]) => showOllama || id !== "ollama")
+    .map(([, reason]) => reason)
+    .filter((reason): reason is string => Boolean(reason));
 
   return (
     <div className="border-b border-zinc-200 p-4 dark:border-zinc-800">
       <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">AI Model</h2>
       <p className="mt-1 text-xs text-zinc-500">
-        Switch between the local model, Gemini, and Groq (a fast fallback for when Gemini&apos;s quota runs out).
+        {showOllama
+          ? "Switch between the local model, Gemini, and Groq (a fast fallback for when Gemini's quota runs out)."
+          : "Switch between Gemini and Groq (a fast fallback for when Gemini's quota runs out)."}
       </p>
-      <div className="mt-2 grid grid-cols-3 gap-2">
-        {OPTIONS.map((option) => {
+      <div className={`mt-2 grid gap-2 ${showOllama ? "grid-cols-3" : "grid-cols-2"}`}>
+        {options.map((option) => {
           const disabledReason = disabledReasons[option.id];
           const isSelected = selected === option.id;
           return (

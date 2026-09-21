@@ -16,6 +16,10 @@ import type { LlmProvider } from "@/lib/config";
 interface HealthState {
   chroma: "reachable" | "unreachable";
   ollama: "reachable" | "unreachable";
+  // False on Vercel (or any host without a reachable Ollama process) - the
+  // sidebar hides the Ollama option entirely there instead of showing it
+  // disabled, since it can never become reachable in that environment.
+  ollamaSupported: boolean;
   gemini: "configured" | "missing_api_key";
   groq: "configured" | "missing_api_key";
 }
@@ -80,7 +84,13 @@ export default function Home() {
         if (!cancelled) setHealth(data);
       } catch {
         if (!cancelled)
-          setHealth({ chroma: "unreachable", ollama: "unreachable", gemini: "missing_api_key", groq: "missing_api_key" });
+          setHealth({
+            chroma: "unreachable",
+            ollama: "unreachable",
+            ollamaSupported: true,
+            gemini: "missing_api_key",
+            groq: "missing_api_key",
+          });
       }
     }
 
@@ -139,7 +149,7 @@ export default function Home() {
         : health?.ollama === "reachable";
 
   const providerDisabledReasons: Partial<Record<LlmProvider, string>> = {};
-  if (health?.ollama === "unreachable") {
+  if (health?.ollama === "unreachable" && health.ollamaSupported) {
     providerDisabledReasons.ollama = "Ollama isn't reachable - run 'ollama serve' locally to enable this.";
   }
   if (health?.gemini === "missing_api_key") {
@@ -210,7 +220,12 @@ export default function Home() {
             </button>
           </div>
           <div className="flex flex-1 flex-col overflow-y-auto">
-            <ProviderSelector selected={provider} onSelect={handleSelectProvider} disabledReasons={providerDisabledReasons} />
+            <ProviderSelector
+              selected={provider}
+              onSelect={handleSelectProvider}
+              disabledReasons={providerDisabledReasons}
+              showOllama={health?.ollamaSupported ?? true}
+            />
             {/* Remounts (fresh status/error state) whenever the provider changes,
                 instead of clearing that state imperatively in an effect. */}
             <KnowledgeBasePanel key={provider} provider={provider} />
