@@ -10,6 +10,7 @@ import { ChatWindow } from "@/components/ChatWindow";
 import { CropSelector } from "@/components/CropSelector";
 import { KnowledgeBasePanel } from "@/components/KnowledgeBasePanel";
 import { ProviderSelector } from "@/components/ProviderSelector";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { isCropId, type CropId } from "@/lib/crops";
 import type { LlmProvider } from "@/lib/config";
 
@@ -176,14 +177,17 @@ export default function Home() {
           <h1 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">🌱 Khedut AI</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs sm:gap-3">
-          <a
-            href="https://patelsankit2.vercel.app/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-purple-700 hover:underline dark:text-purple-400"
-          >
-            Patelsankit Portfolio
-          </a>
+          <div className="flex items-center gap-1.5">
+            <a
+              href="https://patelsankit2.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-purple-700 hover:underline dark:text-purple-400"
+            >
+              Patelsankit Portfolio
+            </a>
+            <ThemeToggle />
+          </div>
           {health && (
             <div className="flex flex-wrap gap-2">
               <StatusPill label="Knowledge Base" ok={health.chroma === "reachable"} />
